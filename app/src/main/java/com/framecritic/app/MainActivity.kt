@@ -47,6 +47,7 @@ private fun CriticScreen() {
             }.getOrNull()
         }
     }
+    val metrics = remember(bitmap) { bitmap?.let { ImageAnalyzer.analyze(it) } }
     Column(
         Modifier.fillMaxSize().background(Color(0xFF101114)).verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -65,11 +66,14 @@ private fun CriticScreen() {
         ChoiceRow(tones, tone) { tone = it }
         HorizontalDivider()
         Text("Analysis report", style = MaterialTheme.typography.titleLarge)
-        Text(
-            if (bitmap == null) "사진을 선택하면 이곳에 분석 결과가 표시됩니다."
-            else "사진이 로드되었습니다. NIMA 및 VLM 추론 엔진은 아직 통합되지 않았습니다. 점수와 크리틱을 생성하지 않습니다.",
-            color = Color.LightGray
-        )
+        if (metrics == null) Text("사진을 선택해 주세요.", color = Color.LightGray)
+        else {
+            Text("평균 휘도: %.1f%% · 평균 채도: %.1f%%".format(metrics.brightness * 100, metrics.saturation * 100))
+            Text("암부 클리핑: %.1f%% · 하이라이트 클리핑: %.1f%%".format(metrics.darkClip * 100, metrics.brightClip * 100))
+            Text("경계 대비 지표: %.4f".format(metrics.edgeContrast))
+            Text(CritiqueRules.report(metrics, persona, level, tone), color = Color.LightGray)
+            Text("NIMA/VLM 미연결: 위 내용은 실제 픽셀 측정 및 규칙 기반 기술 피드백이며 AI 미학 점수가 아닙니다.", color = Color(0xFFFFC107))
+        }
         Text("선택 기준: $persona · $level · $tone", color = Color(0xFFB0BEC5))
     }
 }
