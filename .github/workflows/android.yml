@@ -20,6 +20,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Download official NIMA LiteRT weights
+        run: |
+          mkdir -p app/src/main/assets
+          curl -fL --retry 3 -o app/src/main/assets/nima_aesthetic_fp16.tflite https://huggingface.co/litert-community/NIMA-LiteRT/resolve/main/nima_aesthetic_fp16.tflite
+          curl -fL --retry 3 -o app/src/main/assets/nima_technical_fp16.tflite https://huggingface.co/litert-community/NIMA-LiteRT/resolve/main/nima_technical_fp16.tflite
+          test "$(wc -c < app/src/main/assets/nima_aesthetic_fp16.tflite)" -gt 1000000
+          test "$(wc -c < app/src/main/assets/nima_technical_fp16.tflite)" -gt 1000000
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
       - name: Upload debug APK
