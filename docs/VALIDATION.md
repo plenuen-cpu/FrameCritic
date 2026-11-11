@@ -11,7 +11,7 @@ This file specifies validation scope. Actual outcomes and raw outputs are in the
 - Linux CPU actual SmolVLM with image projector on two distinct images; red-circle / blue-rectangle grounding checks.
 - Linux CPU Qwen2.5 report generation, schema validation and Korean character presence.
 
-These tests are smoke tests. Korean character presence is NOT a language-quality test. Synthetic color/shape grounding checks do NOT establish real-photo accuracy. Read the full JSON outputs. Host tests use the same vision prompt/schema and weights, but a shorter Korean test prompt. They do not execute Android ProcessBuilder, MediaPipe Android inference or photo picker/sharing.
+These tests are smoke tests. Korean character presence is NOT a language-quality test. Synthetic color/shape grounding checks do NOT establish real-photo accuracy. Read the full JSON outputs. Host tests use the same caption prompt, report prompt template, Quick report schema and weights. Synthetic-fixture measurements are limited to RGB means; Android supplies OpenCV/MediaPipe data. They do not execute Android ProcessBuilder, MediaPipe Android inference or photo picker/sharing.
 
 ## Not run without an attached device
 
