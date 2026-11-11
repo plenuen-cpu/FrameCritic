@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
 
 private val personas = listOf("Bresson", "Adams", "Leiter", "Fan Ho")
@@ -48,6 +50,10 @@ private fun CriticScreen() {
         }
     }
     val metrics = remember(bitmap) { bitmap?.let { ImageAnalyzer.analyze(it) } }
+    val nima by produceState<Result<NimaEngine.Scores>?>(initialValue = null, bitmap) {
+        value = null
+        if (bitmap != null) value = withContext(Dispatchers.Default) { NimaEngine.score(context, bitmap) }
+    }
     Column(
         Modifier.fillMaxSize().background(Color(0xFF101114)).verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -72,7 +78,15 @@ private fun CriticScreen() {
             Text("암부 클리핑: %.1f%% · 하이라이트 클리핑: %.1f%%".format(metrics.darkClip * 100, metrics.brightClip * 100))
             Text("경계 대비 지표: %.4f".format(metrics.edgeContrast))
             Text(CritiqueRules.report(metrics, persona, level, tone), color = Color.LightGray)
-            Text("NIMA/VLM 미연결: 위 내용은 실제 픽셀 측정 및 규칙 기반 기술 피드백이며 AI 미학 점수가 아닙니다.", color = Color(0xFFFFC107))
+            when {
+                nima == null -> Text("NIMA 모델 분석 중...", color = Color.LightGray)
+                nima!!.isSuccess -> {
+                    val scores = nima!!.getOrThrow()
+                    Text("NIMA 미학: %.2f / 10 · 기술: %.2f / 10".format(scores.aesthetic, scores.technical))
+                }
+                else -> Text("NIMA 추론 실패: " + (nima!!.exceptionOrNull()?.message ?: "알 수 없는 오류"), color = Color(0xFFFFC107))
+            }
+            Text("사진가별 해설은 규칙 기반입니다. VLM은 아직 연결되지 않았습니다.", color = Color.LightGray)
         }
         Text("선택 기준: $persona · $level · $tone", color = Color(0xFFB0BEC5))
     }
