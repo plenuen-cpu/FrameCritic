@@ -25,4 +25,5 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui")
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
+    implementation("com.google.mlkit:image-labeling:17.0.9")
 }
