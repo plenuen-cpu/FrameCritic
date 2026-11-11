@@ -34,8 +34,8 @@ jobs:
           else
             echo "NIMA URLs not configured; APK builds without NIMA weights and reports missing-model errors."
           fi
-      - name: Build debug APK
-        run: gradle --no-daemon :app:assembleDebug
+      - name: Unit tests and debug APK
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
