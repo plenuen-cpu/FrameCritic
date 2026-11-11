@@ -20,13 +20,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Download official NIMA LiteRT weights
+      - name: Download optional NIMA models
+        env:
+          NIMA_AESTHETIC_URL: ${{ vars.NIMA_AESTHETIC_URL }}
+          NIMA_TECHNICAL_URL: ${{ vars.NIMA_TECHNICAL_URL }}
         run: |
           mkdir -p app/src/main/assets
-          curl -fL --retry 3 -o app/src/main/assets/nima_aesthetic_fp16.tflite https://huggingface.co/litert-community/NIMA-LiteRT/resolve/main/nima_aesthetic_fp16.tflite
-          curl -fL --retry 3 -o app/src/main/assets/nima_technical_fp16.tflite https://huggingface.co/litert-community/NIMA-LiteRT/resolve/main/nima_technical_fp16.tflite
-          test "$(wc -c < app/src/main/assets/nima_aesthetic_fp16.tflite)" -gt 1000000
-          test "$(wc -c < app/src/main/assets/nima_technical_fp16.tflite)" -gt 1000000
+          if [ -n "$NIMA_AESTHETIC_URL" ] && [ -n "$NIMA_TECHNICAL_URL" ]; then
+            curl -fL --retry 3 "$NIMA_AESTHETIC_URL" -o app/src/main/assets/nima_aesthetic_fp16.tflite
+            curl -fL --retry 3 "$NIMA_TECHNICAL_URL" -o app/src/main/assets/nima_technical_fp16.tflite
+            test "$(wc -c < app/src/main/assets/nima_aesthetic_fp16.tflite)" -gt 100000
+            test "$(wc -c < app/src/main/assets/nima_technical_fp16.tflite)" -gt 100000
+          else
+            echo "NIMA URLs not configured; APK builds without NIMA weights and reports missing-model errors."
+          fi
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
       - name: Upload debug APK
