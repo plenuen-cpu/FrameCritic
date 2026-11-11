@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
+import android.content.Intent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
@@ -106,6 +107,23 @@ private fun CriticScreen() {
             report.findings.forEach { Text("• $it", color = Color.LightGray) }
             report.recommendations.forEach { Text("→ $it", color = Color.LightGray) }
             Text(report.disclosure, color = Color(0xFFFFC107))
+            OutlinedButton(onClick = {
+                val reportText = buildString {
+                    appendLine("FrameCritic")
+                    appendLine("Persona: $persona · Severity: $level · Depth: $depth")
+                    appendLine(report.headline)
+                    appendLine("Critic Score (technical): %.1f / 100".format(report.criterionScore))
+                    nima?.getOrNull()?.let { appendLine("NIMA aesthetic: %.2f / 10 · technical: %.2f / 10".format(it.aesthetic, it.technical)) }
+                    report.findings.forEach { appendLine("- $it") }
+                    report.recommendations.forEach { appendLine("→ $it") }
+                    appendLine(report.disclosure)
+                }
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, reportText)
+                }
+                context.startActivity(Intent.createChooser(intent, "비평 리포트 공유"))
+            }) { Text("리포트 복사·공유") }
             Text("비평 말투: $tone", color = Color.LightGray)
             when {
                 sceneLabels == null -> Text("장면 객체 분류 중...", color = Color.LightGray)
