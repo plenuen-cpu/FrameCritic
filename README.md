@@ -8,9 +8,13 @@ Android photographic critique app — early development scaffold.
 - Photographer Persona: Bresson, Adams, Leiter, Fan Ho
 - Critic Level: Generous, Balanced, Strict
 - Critic Tone: Mentor, Critic, Analyst
+- Real on-device pixel analysis: mean luminance, highlight/shadow clipping, saturation, edge contrast
+- Rule-based, persona-aware technical observations (not generative AI)
 - GitHub Actions debug APK build
 
-**Not implemented yet:** NIMA inference, multimodal VLM inference, OpenCV metrics, MediaPipe segmentation, automated scoring, natural-language critique. No AI results are simulated.
+**Not implemented yet:** NIMA inference, multimodal VLM inference, OpenCV integration (current metrics are computed with Android Bitmap), MediaPipe segmentation, learned aesthetic scoring, generative natural-language critique. No AI results are simulated.
+
+**Validation status:** source files committed; a successful GitHub Actions APK build and device execution have not yet been independently confirmed.
 
 ## Build
 Open the repository's **Actions** tab and select **Android APK** → **Run workflow**, or push to `main`. After successful execution, download the `FrameCritic-debug` artifact.
