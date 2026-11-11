@@ -24,4 +24,5 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui")
+    implementation("org.tensorflow:tensorflow-lite:2.17.0")
 }
