@@ -2,7 +2,8 @@
   "type": "object",
   "properties": {
     "description": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 220
     },
     "MOMENT": {
       "type": "object",
@@ -18,10 +19,12 @@
           "maximum": 1
         },
         "observation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 100
         },
         "interpretation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         }
       },
       "required": [
@@ -46,10 +49,12 @@
           "maximum": 1
         },
         "observation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 100
         },
         "interpretation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         }
       },
       "required": [
@@ -74,10 +79,12 @@
           "maximum": 1
         },
         "observation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 100
         },
         "interpretation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         }
       },
       "required": [
@@ -102,10 +109,12 @@
           "maximum": 1
         },
         "observation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 100
         },
         "interpretation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         }
       },
       "required": [
@@ -130,10 +139,12 @@
           "maximum": 1
         },
         "observation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 100
         },
         "interpretation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         }
       },
       "required": [
@@ -158,10 +169,12 @@
           "maximum": 1
         },
         "observation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 100
         },
         "interpretation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         }
       },
       "required": [
@@ -186,10 +199,12 @@
           "maximum": 1
         },
         "observation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 100
         },
         "interpretation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         }
       },
       "required": [
@@ -214,10 +229,12 @@
           "maximum": 1
         },
         "observation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 100
         },
         "interpretation": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 120
         }
       },
       "required": [

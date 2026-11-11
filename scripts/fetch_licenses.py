@@ -12,6 +12,7 @@ files={
  'NIMA-conversion-model-card.md':'https://huggingface.co/litert-community/NIMA-LiteRT/resolve/5e27e756cf38d2e738ee0c7c5d6f1c43f2073038/README.md'
 }
 for name,url in files.items():
+ if (folder/name).is_file() and (folder/name).stat().st_size>100: continue
  with urllib.request.urlopen(url,timeout=90) as response: data=response.read()
  assert len(data)>100,name
  (folder/name).write_bytes(data)

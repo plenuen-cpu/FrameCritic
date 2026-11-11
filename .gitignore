@@ -9,3 +9,6 @@ app/src/main/jniLibs/
 vendor/
 verification/
 *.apk
+
+__pycache__/
+*.pyc

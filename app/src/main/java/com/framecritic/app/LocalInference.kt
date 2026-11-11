@@ -47,7 +47,7 @@ class LocalInference(private val context:Context,private val folder:File) {
                     .put(JSONObject().put("type","text").put("text",prompt))
             }
             val request=JSONObject().put("messages",JSONArray().put(JSONObject().put("role","user").put("content",content)))
-                .put("temperature",0.1).put("seed",42).put("max_tokens",tokens).put("stream",false)
+                .put("temperature",0.1).put("repeat_penalty",1.12).put("repeat_last_n",128).put("seed",42).put("max_tokens",tokens).put("stream",false)
                 .put("chat_template_kwargs",JSONObject().put("enable_thinking",false))
                 .put("response_format",JSONObject().put("type","json_object").put("schema",schema))
             val conn=connection("/v1/chat/completions",420_000);active=conn
@@ -120,7 +120,10 @@ object Pipeline {
             $evidence
         """.trimIndent()
         return try {
-            val result=LocalInference(context,folder).generate("korean.gguf",null,prompt,JSONObject(asset(context,"report_schema.json")),d.tokens)
+            val schema=JSONObject(asset(context,"report_schema.json"))
+            val properties=schema.getJSONObject("properties")
+            properties.keys().forEach { key->properties.getJSONObject(key).put("maxLength",when(d){Depth.QUICK->70;Depth.STANDARD->120;Depth.EXPERT->200}) }
+            val result=LocalInference(context,folder).generate("korean.gguf",null,prompt,schema,d.tokens)
             val labels=linkedMapOf("summary" to "종합 크리틱","observations" to "관찰 사실 · VLM 추정","interpretation" to "미적 해석","strengths" to "주요 강점","improvements" to "개선이 필요한 부분","composition" to "구도","exposure" to "노출","color" to "색채","sharpness" to "선명도","shooting" to "촬영 제안","editing" to "보정 제안")
             val sections=labels.map{(k,v)->v to result.getString(k).also{check(it.isNotBlank()){ "빈 리포트 항목: $k" }}}.toMap()
             check(sections.values.joinToString("").count{it in '가'..'힣'}>=20){"한국어 생성 품질 확인에 실패했습니다."}

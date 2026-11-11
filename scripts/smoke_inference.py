@@ -21,6 +21,7 @@ for name in ['nima_aesthetic.tflite','nima_technical.tflite']:
   scores.append(float(np.arange(1,11)@p))
  assert abs(scores[0]-scores[1])>1e-6,'Model output is invariant to test inputs'
  result['models'][name]={'scores':scores,'status':'actual inference passed'}
+ (out/'inference-results.json').write_text(json.dumps(result,indent=2))
 def start(name,vision):
  with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
  args=[str(root/'vendor/host-build/bin/llama-server'),'-m',str(models/name),'--host','127.0.0.1','--port',str(port),'--api-key','ci-only','-c','6144','-t','3','-ngl','0','-np','1','--no-warmup','--reasoning','off','--no-webui']
@@ -41,16 +42,20 @@ def generate(port,prompt,schema,max_tokens,image=None):
  if image:
   buf=io.BytesIO();image.save(buf,format='JPEG')
   content=[{'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(buf.getvalue()).decode()}},{'type':'text','text':prompt}]
- body={'messages':[{'role':'user','content':content}],'seed':42,'temperature':.1,'max_tokens':max_tokens,'stream':False,'chat_template_kwargs':{'enable_thinking':False},'response_format':{'type':'json_object','schema':schema}}
+ body={'messages':[{'role':'user','content':content}],'seed':42,'temperature':.1,'repeat_penalty':1.12,'repeat_last_n':128,'max_tokens':max_tokens,'stream':False,'chat_template_kwargs':{'enable_thinking':False},'response_format':{'type':'json_object','schema':schema}}
  req=urllib.request.Request(f'http://127.0.0.1:{port}/v1/chat/completions',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer ci-only'})
  with urllib.request.urlopen(req,timeout=600) as resp:data=json.load(resp)
+ (out/'last-response.json').write_text(json.dumps(data,ensure_ascii=False,indent=2))
  choice=data['choices'][0];assert choice['finish_reason']!='length',choice
  obj=json.loads(choice['message']['content']);jsonschema.validate(obj,schema)
  return obj
 p,log,port=start('vision.gguf',True)
 try:
  started=time.time();schema=json.loads((assets/'vision_schema.json').read_text());prompt=(assets/'vision_prompt.txt').read_text()
- scenes=[generate(port,prompt,schema,1400,im) for im in images]
+ scenes=[]
+ for im in images:
+  scenes.append(generate(port,prompt,schema,1400,im))
+  (out/'vision-outputs.json').write_text(json.dumps(scenes,ensure_ascii=False,indent=2))
  assert scenes[0]['description']!=scenes[1]['description'],'Scene descriptions are invariant'
  result['models']['SmolVLM2']={'seconds':time.time()-started,'outputs':scenes,'status':'actual image + projector inference passed; semantic quality requires human review'}
 finally:p.terminate();p.wait(timeout=20);log.close()
@@ -58,7 +63,7 @@ p,log,port=start('korean.gguf',False)
 try:
  started=time.time();schema=json.loads((assets/'report_schema.json').read_text())
  prompt='/no_think\n주어진 사진 분석만 근거로 한국어 비평을 JSON으로 작성하세요. 각 필드는 짧은 한 문장. observations는 관찰, interpretation은 해석, strengths 강점, improvements 개선점, composition 구도, exposure 노출, color 색채, sharpness 선명도, shooting 촬영, editing 보정, summary 종합입니다. 모르는 정보는 불확실하다고 쓰세요. DATA: '+json.dumps(scenes[0],ensure_ascii=False)
- report=generate(port,prompt,schema,1000)
+ report=generate(port,prompt,schema,1200)
  assert sum('가'<=c<='힣' for c in json.dumps(report,ensure_ascii=False))>=20,'Korean generation check failed'
  result['models']['Qwen3']={'seconds':time.time()-started,'output':report,'status':'actual Korean text generation passed; not a quality benchmark'}
 finally:p.terminate();p.wait(timeout=20);log.close()

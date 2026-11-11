@@ -2,37 +2,48 @@
   "type": "object",
   "properties": {
     "summary": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "observations": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "interpretation": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "strengths": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "improvements": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "composition": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "exposure": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "color": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "sharpness": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "shooting": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     },
     "editing": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 70
     }
   },
   "required": [

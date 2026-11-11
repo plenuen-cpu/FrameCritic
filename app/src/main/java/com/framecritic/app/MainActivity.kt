@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,8 +58,11 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
             items.forEach{item->FilterChip(selected=item==selected,onClick={onSelect(item)},enabled=enabled,label={Text(label(item))})}
     }
 }
+}
 @Composable fun CriticScreen(vm:CriticViewModel=viewModel()){
     val s by vm.state.collectAsStateWithLifecycle();val context=LocalContext.current
+    val view=LocalView.current
+    DisposableEffect(s.busy){view.keepScreenOn=s.busy;onDispose{view.keepScreenOn=false}}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){it?.let(vm::load)}
     val scope=rememberCoroutineScope();var sharing by remember{mutableStateOf(false)};var info by remember{mutableStateOf(false)}
     Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
@@ -102,7 +106,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
             Text("기술 원점수 %.2f / 10 · NIMA 분포 표준편차 %.2f".format(a.nima.technical,a.nima.deviation),fontSize=12.sp,color=Color.Gray)
             Text("NIMA 1–10점 확률분포",fontSize=12.sp)
             Row(Modifier.fillMaxWidth().height(62.dp),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.Bottom){
-                a.nima.probabilities.forEachIndexed{i,v->Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally){Box(Modifier.fillMaxWidth().height((v*110).coerceAtLeast(1f).dp).background(Accent));Text("${i+1}",fontSize=10.sp,color=Color.Gray)}}
+                a.nima.probabilities.forEachIndexed{i,v->Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally){Box(Modifier.fillMaxWidth().height((v/(a.nima.probabilities.maxOrNull()?:1f)*44).coerceAtLeast(1f).dp).background(Accent));Text("${i+1}",fontSize=10.sp,color=Color.Gray)}}
             }
             s.report?.let{report->
                 report.score?.let{score->
@@ -110,6 +114,8 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
                     Text("NIMA 40% + 사진가 관점 60%. 사진가 관점은 항목 가중치 × VLM 신뢰도로 정규화합니다.\n엄격도 보정: 1 + 9 × x^γ (x는 0~1 기본점수, γ는 Generous 0.75 / Balanced 1 / Strict 1.5).",fontSize=12.sp,color=Color.Gray)
                     Text("관점 점수 %.2f · 보정 전 %.2f → %.2f\n가중 신뢰도 %.0f%% · 경험적 평가 함수이며 인간 심사위원 점수로 검증된 척도가 아닙니다.".format(score.weighted,score.base,score.adjusted,score.coverage*100),fontSize=12.sp)
                     a.scene?.let{scene->
+                        val important=score.contributions.indices.sortedByDescending{score.contributions[it]}.take(3)
+                        Text("이 관점의 점수에 크게 기여한 항목: "+important.joinToString{Axis.entries[it].title}+". 다른 관점은 같은 사진 근거에 다른 가중치를 적용합니다.",fontSize=12.sp)
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(16.dp)){
                             Level.entries.forEach{l->Text("${l.title} %.2f".format(Scoring.evaluate(a.nima.aesthetic,scene.evidence,report.persona,l).adjusted),fontSize=12.sp)}
                         }
@@ -123,7 +129,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
                 report.sections.forEach{(heading,body)->Text(heading,fontSize=17.sp,fontWeight=FontWeight.Medium);Text(body,fontSize=14.sp,lineHeight=23.sp)}
                 if(report.sections.isNotEmpty())Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
                     OutlinedButton(onClick={val cm=context.getSystemService(Context.CLIPBOARD_SERVICE)as ClipboardManager;cm.setPrimaryClip(ClipData.newPlainText("FrameCritic",report.text(a)));Toast.makeText(context,"리포트를 복사했습니다",Toast.LENGTH_SHORT).show()}){Text("텍스트 복사")}
-                    OutlinedButton(enabled=!sharing,onClick={sharing=true;scope.launch{try{val file=withContext(Dispatchers.IO){renderShare(context,s.bitmap!!,report.text(a))};val uri=FileProvider.getUriForFile(context,"${context.packageName}.files",file);context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="image/png";putExtra(Intent.EXTRA_STREAM,uri);clipData=ClipData.newRawUri("FrameCritic",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"리포트 공유"))}catch(e:Exception){Toast.makeText(context,e.message,Toast.LENGTH_LONG).show()}finally{sharing=false}}}){Text(if(sharing)"만드는 중" else "이미지 공유")}
+                    OutlinedButton(enabled=!sharing,onClick={sharing=true;scope.launch{try{val file=withContext(Dispatchers.IO){renderShare(context,s.bitmap!!,report.text(a))};val uri=FileProvider.getUriForFile(context,"${context.packageName}.files",file);context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="image/png";putExtra(Intent.EXTRA_STREAM,uri);clipData=ClipData.newRawUri("FrameCritic",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"리포트 공유"))}catch(e:OutOfMemoryError){Toast.makeText(context,"공유 이미지를 만들 메모리가 부족합니다.",Toast.LENGTH_LONG).show()}catch(e:Exception){Toast.makeText(context,e.message,Toast.LENGTH_LONG).show()}finally{sharing=false}}}){Text(if(sharing)"만드는 중" else "이미지 공유")}
                 }
             }
             Text("측정 결과 · OpenCV",fontSize=17.sp,fontWeight=FontWeight.Medium)
@@ -177,12 +183,13 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
     }
 }
 private fun renderShare(context:Context,photo:Bitmap,text:String):File {
-    val width=900;val margin=40;val photoHeight=(820.0*photo.height/photo.width).toInt()
+    val width=900;val margin=40;val photoHeight=(820.0*photo.height/photo.width).toInt().coerceIn(1,2000)
+    val drawnWidth=(photoHeight.toDouble()*photo.width/photo.height).toInt().coerceIn(1,820)
     val paint=TextPaint(Paint.ANTI_ALIAS_FLAG).apply{color=android.graphics.Color.rgb(235,235,230);textSize=26f}
     val layout=StaticLayout.Builder.obtain(text,0,text.length,paint,width-margin*2).setLineSpacing(10f,1f).build()
     val image=Bitmap.createBitmap(width,photoHeight+layout.height+margin*3,Bitmap.Config.ARGB_8888)
     try {
-        val c=android.graphics.Canvas(image);c.drawColor(android.graphics.Color.rgb(16,17,16));c.drawBitmap(photo,null,Rect(margin,margin,width-margin,margin+photoHeight),Paint(Paint.FILTER_BITMAP_FLAG));c.save();c.translate(margin.toFloat(),(photoHeight+margin*2).toFloat());layout.draw(c);c.restore()
+        val c=android.graphics.Canvas(image);c.drawColor(android.graphics.Color.rgb(16,17,16));c.drawBitmap(photo,null,Rect((width-drawnWidth)/2,margin,(width+drawnWidth)/2,margin+photoHeight),Paint(Paint.FILTER_BITMAP_FLAG));c.save();c.translate(margin.toFloat(),(photoHeight+margin*2).toFloat());layout.draw(c);c.restore()
         val dir=File(context.cacheDir,"reports").apply{mkdirs()};dir.listFiles()?.filter{System.currentTimeMillis()-it.lastModified()>24*60*60*1000}?.forEach{it.delete()}
         return File(dir,"FrameCritic-${System.currentTimeMillis()}.png").also{file->file.outputStream().use{check(image.compress(Bitmap.CompressFormat.PNG,100,it))}}
     }finally{image.recycle()}

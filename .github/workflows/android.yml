@@ -33,8 +33,19 @@ jobs:
         run: |
           python scripts/fetch_models.py
           python scripts/fetch_licenses.py
+      - uses: actions/cache/restore@v4
+        id: native-arm
+        with:
+          path: app/src/main/jniLibs/arm64-v8a/libframecritic-server.so
+          key: native-arm-${{ hashFiles('scripts/prepare_runtime.sh') }}
       - name: Build Android ARM64 runtime
+        if: steps.native-arm.outputs.cache-hit != 'true'
         run: bash scripts/prepare_runtime.sh android
+      - uses: actions/cache/save@v4
+        if: steps.native-arm.outputs.cache-hit != 'true'
+        with:
+          path: app/src/main/jniLibs/arm64-v8a/libframecritic-server.so
+          key: native-arm-${{ hashFiles('scripts/prepare_runtime.sh') }}
       - name: Build and unit test Android app
         run: |
           gradle --no-daemon --stacktrace wrapper --gradle-version 8.9
@@ -76,7 +87,18 @@ jobs:
           path: app/src/main/assets/models
           key: models-${{ hashFiles('app/src/main/assets/models/manifest.json') }}
       - run: python scripts/fetch_models.py
+      - uses: actions/cache/restore@v4
+        id: native-host
+        with:
+          path: vendor/host-build/bin/llama-server
+          key: native-host-${{ hashFiles('scripts/prepare_runtime.sh') }}
       - run: bash scripts/prepare_runtime.sh host
+        if: steps.native-host.outputs.cache-hit != 'true'
+      - uses: actions/cache/save@v4
+        if: steps.native-host.outputs.cache-hit != 'true'
+        with:
+          path: vendor/host-build/bin/llama-server
+          key: native-host-${{ hashFiles('scripts/prepare_runtime.sh') }}
       - run: pip install ai-edge-litert==1.4.0 numpy==1.26.4 pillow==11.1.0 jsonschema==4.23.0
       - name: Real NIMA and multimodal and Korean inference
         run: python scripts/smoke_inference.py

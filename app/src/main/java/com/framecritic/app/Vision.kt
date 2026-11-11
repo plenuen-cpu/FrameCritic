@@ -40,7 +40,7 @@ object Vision {
             val luma=ByteArray(bitmap.width*bitmap.height);gray.get(0,0,luma)
             val hist=IntArray(256);luma.forEach{hist[it.toInt()and 255]++}
             val colors=ByteArray(luma.size*3);hsv.get(0,0,colors);val hues=IntArray(12)
-            for(i in luma.indices)if((colors[i*3+1].toInt()and 255)>32)hues[(colors[i*3].toInt()and 255)/15.coerceAtLeast(1)]++
+            for(i in luma.indices)if((colors[i*3+1].toInt()and 255)>32)hues[((colors[i*3].toInt()and 255)/15).coerceIn(0,11)]++
             var local=0.0;var count=0
             for(y in 0 until gray.rows() step 32)for(x in 0 until gray.cols() step 32){val patch=gray.submat(y,min(y+32,gray.rows()),x,min(x+32,gray.cols()));try{local+=stats(patch).second;count++}finally{patch.release()}}
             Imgproc.Canny(gray,edge,60.0,150.0);Imgproc.HoughLinesP(edge,lines,1.0,Math.PI/180,60,bitmap.width*.22,20.0)

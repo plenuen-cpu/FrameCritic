@@ -9,7 +9,7 @@ enum class Tone(val title: String,val instruction: String) {
     CRITIC("Critic","직설적인 미학 비평. 인신공격 없이 사진의 표현을 논할 것."),
     ANALYST("Analyst","측정값과 추론을 구분하고 객관적·기술적으로 설명할 것.")
 }
-enum class Depth(val title:String,val tokens:Int) { QUICK("Quick",600), STANDARD("Standard",1050), EXPERT("Expert",1600) }
+enum class Depth(val title:String,val tokens:Int) { QUICK("Quick",1200), STANDARD("Standard",2000), EXPERT("Expert",3000) }
 enum class Axis(val title:String,val rubric:String) {
     MOMENT("순간·관계","Gesture, timing and visible relationship between subjects. Do not invent an event."),
     GEOMETRY("구도·기하","Deliberate framing, alignment, balance and placement, including successful asymmetry."),
