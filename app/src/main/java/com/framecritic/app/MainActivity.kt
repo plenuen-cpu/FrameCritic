@@ -45,12 +45,36 @@ private fun CriticScreen() {
     var depth by remember { mutableStateOf(depths[1]) }
     var tone by remember { mutableStateOf(tones[1]) }
     var showMask by remember { mutableStateOf(false) }
-    var apiKey by remember { mutableStateOf("") }
+    var modelFile by remember { mutableStateOf<java.io.File?>(null) }
+    var modelImporting by remember { mutableStateOf(false) }
     var vlmResult by remember { mutableStateOf<Result<String>?>(null) }
     var vlmLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri = it }
+    val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            modelImporting = true
+            scope.launch {
+                try {
+                    val target = java.io.File(context.filesDir, "gemma3n_vision.task")
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            val temporary = java.io.File(context.filesDir, "gemma3n_vision.tmp")
+                            temporary.outputStream().use { input.copyTo(it) }
+                            if (target.exists()) target.delete()
+                            check(temporary.renameTo(target)) { "모델 저장 실패" }
+                        } ?: error("모델 파일을 열 수 없습니다.")
+                    }
+                    modelFile = target
+                } catch (error: Exception) {
+                    vlmResult = Result.failure(error)
+                } finally {
+                    modelImporting = false
+                }
+            }
+        }
+    }
     val bitmap = remember(imageUri) {
         imageUri?.let { uri ->
             runCatching {
@@ -147,35 +171,31 @@ private fun CriticScreen() {
         }
         if (bitmap != null && metrics != null) {
             HorizontalDivider()
-            Text("VLM 사진 비평 · Gemini Cloud", style = MaterialTheme.typography.titleLarge)
-            Text("실제 사진을 Gemini 서버로 전송해 한국어 비평을 생성합니다. API 키는 저장하지 않습니다. 네트워크와 API 요금이 발생할 수 있습니다.", color = Color.LightGray)
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                label = { Text("Gemini API Key") },
-                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Button(enabled = !vlmLoading && apiKey.isNotBlank(), onClick = {
+            Text("온디바이스 VLM · Gemma 3n", style = MaterialTheme.typography.titleLarge)
+            Text("사진과 프롬프트는 외부 서버로 전송하지 않습니다. 호환되는 Gemma 3n 멀티모달 .task 모델을 최초 1회 가져와야 합니다.", color = Color.LightGray)
+            OutlinedButton(enabled = !modelImporting && !vlmLoading, onClick = { modelPicker.launch(arrayOf("*/*")) }) {
+                Text(if (modelImporting) "모델 가져오는 중..." else "로컬 Gemma 3n .task 모델 선택")
+            }
+            Text(if (modelFile != null) "모델 준비됨: " + (modelFile!!.length() / 1048576) + " MiB" else "모델 미설치", color = Color.LightGray)
+            Button(enabled = !vlmLoading && modelFile != null, onClick = {
                 val selectedBitmap = bitmap
                 val selectedMetrics = metrics
+                val selectedModel = modelFile ?: return@Button
                 val selectedSeverity = Severity.entries.first { it.label == level }
                 val selectedDepth = ReportDepth.entries.first { it.label == depth }
                 val selectedPersona = persona
                 val selectedTone = tone
-                val selectedKey = apiKey
                 val selectedNima = nima?.getOrNull()
                 vlmLoading = true
                 vlmResult = null
                 scope.launch {
                     try {
-                        vlmResult = VlmCritic.critique(selectedBitmap, selectedKey, selectedPersona, selectedSeverity, selectedTone, selectedDepth, selectedMetrics, selectedNima)
+                        vlmResult = VlmCritic.critique(context, selectedBitmap, selectedModel, selectedPersona, selectedSeverity, selectedTone, selectedDepth, selectedMetrics, selectedNima)
                     } finally {
                         vlmLoading = false
                     }
                 }
-            }) { Text(if (vlmLoading) "VLM 비평 생성 중..." else "사진을 전송하고 VLM 비평 생성") }
+            }) { Text(if (vlmLoading) "기기에서 VLM 추론 중..." else "온디바이스 사진 비평 생성") }
             vlmResult?.fold(
                 onSuccess = { Text(it, color = Color.White) },
                 onFailure = { Text("VLM 오류: " + (it.message ?: "알 수 없는 오류"), color = Color(0xFFFFC107)) }
