@@ -56,6 +56,10 @@ private fun CriticScreen() {
         value = null
         if (bitmap != null) value = withContext(Dispatchers.Default) { NimaEngine.score(context, bitmap) }
     }
+    val sceneLabels by produceState<Result<List<Pair<String, Float>>>?>(initialValue = null, bitmap) {
+        value = null
+        if (bitmap != null) value = SceneLabels.detect(bitmap)
+    }
     Column(
         Modifier.fillMaxSize().background(Color(0xFF101114)).verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -90,6 +94,11 @@ private fun CriticScreen() {
             report.recommendations.forEach { Text("→ $it", color = Color.LightGray) }
             Text(report.disclosure, color = Color(0xFFFFC107))
             Text("비평 말투: $tone", color = Color.LightGray)
+            when {
+                sceneLabels == null -> Text("장면 객체 분류 중...", color = Color.LightGray)
+                sceneLabels!!.isSuccess -> Text("감지된 장면 태그: " + sceneLabels!!.getOrThrow().joinToString { it.first + " (" + (it.second * 100).toInt() + "%)" }, color = Color.LightGray)
+                else -> Text("장면 태그 분석 실패: " + (sceneLabels!!.exceptionOrNull()?.message ?: "알 수 없는 오류"), color = Color(0xFFFFC107))
+            }
             when {
                 nima == null -> Text("NIMA 모델 분석 중...", color = Color.LightGray)
                 nima!!.isSuccess -> {
