@@ -28,3 +28,19 @@ Open the repository's **Actions** tab and select **Android APK** → **Run workf
 - MediaPipe: https://github.com/google-ai-edge/mediapipe
 
 Model licenses, Android compatibility and runtime behavior must be validated before integration.
+
+
+## Critique severity (implemented in source)
+- **Mild**: forgiving technical thresholds, strengths-first headline.
+- **Balanced**: middle technical thresholds.
+- **Harsh**: tighter clipping and edge-contrast thresholds, defects-first headline.
+- **Quick / Standard / Expert** report detail modes.
+- **Critic Score**: explicit rule-based technical rubric (0–100); it is not an aesthetic model score. Severity changes thresholds but **never modifies raw NIMA scores**.
+- **ML Kit image labeling**: real on-device content tags with confidence; not a generative vision-language model.
+- Photographer personas are **inspired evaluation lenses**, not quotes or simulated identities.
+
+## Outstanding production requirements
+- Actual multimodal VLM runtime with image preprocessing, quantized weights, tokenizer and Korean output; not implemented.
+- MediaPipe segmentation and overlay UI; not implemented.
+- Automated device/instrumentation tests and verified APK build; not confirmed.
+- Verify GitHub Actions model download, binary size and Android runtime compatibility from build logs.
