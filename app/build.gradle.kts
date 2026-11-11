@@ -27,4 +27,5 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("com.google.mlkit:image-labeling:17.0.9")
     implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
+    testImplementation("junit:junit:4.13.2")
 }
