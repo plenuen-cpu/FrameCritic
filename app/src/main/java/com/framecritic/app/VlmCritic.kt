@@ -25,13 +25,14 @@ object VlmCritic {
             val executable = File(context.applicationInfo.nativeLibraryDir, "libsmolvlm-server.so")
             require(executable.isFile) { "로컬 llama.cpp 서버 바이너리가 APK에 없습니다. 빌드를 확인하세요." }
             val port = 18871
+            val serverLog = File(context.cacheDir, "smolvlm-server.log")
             val process = ProcessBuilder(
                 executable.absolutePath,
                 "-m", modelFile.absolutePath,
                 "--mmproj", mmprojFile.absolutePath,
                 "--host", "127.0.0.1", "--port", port.toString(),
                 "-c", "2048", "-t", "4", "-ngl", "0"
-            ).redirectErrorStream(true).start()
+            ).redirectErrorStream(true).redirectOutput(serverLog).start()
             try {
                 var ready = false
                 repeat(90) {
