@@ -1,15 +1,17 @@
-name: Android APK
+name: FrameCritic Offline APK
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [rebuild/offline-v2]
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: framecritic-offline-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  build:
+  android:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -23,41 +25,93 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Download optional NIMA models
-        env:
-          NIMA_AESTHETIC_URL: ${{ vars.NIMA_AESTHETIC_URL }}
-          NIMA_TECHNICAL_URL: ${{ vars.NIMA_TECHNICAL_URL }}
-        run: |
-          mkdir -p app/src/main/assets
-          if [ -n "$NIMA_AESTHETIC_URL" ] && [ -n "$NIMA_TECHNICAL_URL" ]; then
-            curl -fL --retry 3 "$NIMA_AESTHETIC_URL" -o app/src/main/assets/nima_aesthetic_fp16.tflite
-            curl -fL --retry 3 "$NIMA_TECHNICAL_URL" -o app/src/main/assets/nima_technical_fp16.tflite
-            test "$(wc -c < app/src/main/assets/nima_aesthetic_fp16.tflite)" -gt 100000
-            test "$(wc -c < app/src/main/assets/nima_technical_fp16.tflite)" -gt 100000
-          else
-            echo "NIMA URLs not configured; APK builds without NIMA weights and reports missing-model errors."
-          fi
-      - name: Build llama.cpp Android ARM64 multimodal server
-        run: |
-          git init /tmp/llama.cpp
-          git -C /tmp/llama.cpp remote add origin https://github.com/ggml-org/llama.cpp.git
-          git -C /tmp/llama.cpp fetch --depth 1 origin 956591f4570aa6636895d90439892fef7c075b17
-          git -C /tmp/llama.cpp checkout --detach FETCH_HEAD
-          cmake -S /tmp/llama.cpp -B /tmp/llama-android \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/28.2.13676358/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
-            -DANDROID_STL=c++_static \
-            -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
-            -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_UI=OFF \
-            -DLLAMA_OPENSSL=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DBUILD_SHARED_LIBS=OFF
-          cmake --build /tmp/llama-android --config Release --target llama-server -j 2
-          mkdir -p app/src/main/jniLibs/arm64-v8a
-          cp /tmp/llama-android/bin/llama-server app/src/main/jniLibs/arm64-v8a/libsmolvlm-server.so
-      - name: Unit tests and debug APK
-        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/cache@v4
         with:
-          name: FrameCritic-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/src/main/assets/models
+          key: models-${{ hashFiles('app/src/main/assets/models/manifest.json') }}
+      - name: Embed verified models and licenses
+        run: |
+          python scripts/fetch_models.py
+          python scripts/fetch_licenses.py
+      - name: Build Android ARM64 runtime
+        run: bash scripts/prepare_runtime.sh android
+      - name: Build and unit test Android app
+        run: |
+          gradle --no-daemon --stacktrace wrapper --gradle-version 8.9
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+      - name: Verify signature alignment and embedded models
+        run: |
+          mkdir -p verification
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk > verification/signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/debug/app-debug.apk > verification/alignment.txt
+          python scripts/verify_apk.py
+          cp app/build/outputs/apk/debug/app-debug.apk FrameCritic-2.0.0-arm64.apk
+          zip -q -r FrameCritic-2.0.0-source-with-models.zip app/src app/build.gradle.kts build.gradle.kts settings.gradle.kts gradle.properties gradlew gradlew.bat gradle scripts docs README.md .github .gitignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrameCritic-Android
+          path: |
+            FrameCritic-2.0.0-arm64.apk
+            FrameCritic-2.0.0-source-with-models.zip
+          compression-level: 0
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-verification
+          path: |
+            verification/
+            app/build/reports/
+            app/build/outputs/apk/androidTest/
+  inference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: app/src/main/assets/models
+          key: models-${{ hashFiles('app/src/main/assets/models/manifest.json') }}
+      - run: python scripts/fetch_models.py
+      - run: bash scripts/prepare_runtime.sh host
+      - run: pip install ai-edge-litert==1.4.0 numpy==1.26.4 pillow==11.1.0 jsonschema==4.23.0
+      - name: Real NIMA and multimodal and Korean inference
+        run: python scripts/smoke_inference.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Inference-verification
+          path: verification/
+  deliver:
+    needs: [android, inference]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FrameCritic-Android
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: Inference-verification
+          path: release/inference
+      - uses: actions/download-artifact@v4
+        with:
+          name: Android-verification
+          path: release/android-verification
+      - run: cd release && zip -qr FrameCritic-verification.zip inference android-verification
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-v2-${{ github.run_number }}
+          name: FrameCritic 2.0 Offline · build ${{ github.run_number }}
+          prerelease: true
+          body_path: docs/RELEASE_NOTES.md
+          files: |
+            release/FrameCritic-2.0.0-arm64.apk
+            release/FrameCritic-2.0.0-source-with-models.zip
+            release/FrameCritic-verification.zip

@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string"
+    },
+    "observations": {
+      "type": "string"
+    },
+    "interpretation": {
+      "type": "string"
+    },
+    "strengths": {
+      "type": "string"
+    },
+    "improvements": {
+      "type": "string"
+    },
+    "composition": {
+      "type": "string"
+    },
+    "exposure": {
+      "type": "string"
+    },
+    "color": {
+      "type": "string"
+    },
+    "sharpness": {
+      "type": "string"
+    },
+    "shooting": {
+      "type": "string"
+    },
+    "editing": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "summary",
+    "observations",
+    "interpretation",
+    "strengths",
+    "improvements",
+    "composition",
+    "exposure",
+    "color",
+    "sharpness",
+    "shooting",
+    "editing"
+  ],
+  "additionalProperties": false
+}

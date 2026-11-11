@@ -10,26 +10,32 @@ android {
         applicationId = "com.framecritic.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 20
+        versionName = "2.0.0"
         ndk { abiFilters += "arm64-v8a" }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
-    // The local VLM server is an executable loaded from nativeLibraryDir.
-    packaging { jniLibs { useLegacyPackaging = true } }
+    packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/libframecritic-server.so" } }
+    androidResources { noCompress += listOf("gguf", "tflite") }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui")
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
-    implementation("com.google.mlkit:image-labeling:17.0.9")
-    implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
-
+    implementation("org.opencv:opencv:4.12.0")
+    implementation("com.google.mediapipe:tasks-vision:0.10.21")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }

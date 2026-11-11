@@ -1,9 +1,11 @@
-.gradle/
-build/
+/.gradle/
 **/build/
-local.properties
-.idea/
+/local.properties
+/.idea/
 *.iml
+app/src/main/assets/models/*
+!app/src/main/assets/models/manifest.json
+app/src/main/jniLibs/
+vendor/
+verification/
 *.apk
-*.aab
-app/src/main/assets/*.tflite

@@ -1,72 +1,35 @@
-# FrameCritic
+# FrameCritic 2.0
 
-Android photographic critique app — early development scaffold.
+Fresh native Android application for on-device photo criticism. Kotlin / Jetpack Compose / Material 3. Korean interface. Samsung Galaxy S25 Ultra (ARM64, Android 9+) target.
 
-## Current implementation (v0.1)
-- Native Kotlin / Jetpack Compose interface
-- Android photo picker and local photo preview
-- Photographer Persona: Bresson, Adams, Leiter, Fan Ho
-- Critic Level: Generous, Balanced, Strict
-- Critic Tone: Mentor, Critic, Analyst
-- Real on-device pixel analysis: mean luminance, highlight/shadow clipping, saturation, edge contrast
-- Rule-based, persona-aware technical observations (not generative AI)
-- GitHub Actions debug APK build
+**Download the APK and the complete Android Studio source with weights from the newest `offline-v2-*` prerelease.** GitHub's automatic Source code archive excludes large weights; use `FrameCritic-2.0.0-source-with-models.zip` for the self-contained source deliverable.
 
-**Implemented in source, not yet device-validated:** NIMA aesthetic and technical LiteRT/TFLite inference, with model downloads during CI build from https://huggingface.co/litert-community/NIMA-LiteRT. Scores are shown only when both model inferences succeed.\n\n**Not implemented yet:** multimodal VLM inference, OpenCV integration (current metrics use Android Bitmap), MediaPipe segmentation, generative natural-language critique. No AI results are simulated.
+## Actual inference pipeline
 
-**Validation status:** source files committed; successful CI APK build, model compatibility, inference accuracy, and device execution have not yet been independently confirmed.
+1. Android photo picker → EXIF-aware ImageDecoder → sRGB, max long edge 1280.
+2. NIMA MobileNet AVA and TID2013 TFLite inference; untouched 10-bin probability distributions and expectation.
+3. OpenCV histogram, extreme luminance masks, RGB means, hue distribution, contrast, Laplacian variance, near-horizontal line candidates.
+4. MediaPipe EfficientDet-Lite0 object detection with position, size, confidence and surrounding frame space. Detection is limited to COCO categories; it does not recognize every possible subject.
+5. SmolVLM2-500M Q8 plus its image projector → schema-constrained observation / interpretation / eight rubric scores / confidence.
+6. Deterministic persona-weighted scoring, then continuous critic-level calibration.
+7. Sequential Qwen3-0.6B Q8 inference composes a Korean report from this evidence. No fixed generated critique or fallback scores.
 
-## Build
-Open the repository's **Actions** tab and select **Android APK** → **Run workflow**, or push to `main`. After successful execution, download the `FrameCritic-debug` artifact.
+All **six weight files (1,202,541,635 bytes)** are in the APK. No first-run internet download. First use extracts verified weights to app-private storage (~1.3GB extra free space). Runtime HTTP is authenticated loopback only; no remote API, API key, telemetry or photo upload.
 
-## Planned AI references
-- NIMA: https://github.com/idealo/image-quality-assessment
-- VLM: https://github.com/huggingface/smollm
-- Multimodal inference: https://github.com/ggml-org/llama.cpp
-- LiteRT: https://github.com/google-ai-edge/LiteRT
-- OpenCV: https://github.com/opencv/opencv
-- MediaPipe: https://github.com/google-ai-edge/mediapipe
+Two language/vision models run sequentially to reduce peak RAM. Small models can hallucinate. Scores are heuristic aesthetic judgments, not validated objective artistic quality. See [model comparison](docs/MODELS.md), [scoring](docs/SCORING.md), [validation limits](docs/VALIDATION.md).
 
-Model licenses, Android compatibility and runtime behavior must be validated before integration.
+## Features
 
+Four photographer-inspired weighted perspectives, independent three-level strictness / three tones / three report depths; dark photo-first UI; raw NIMA distribution; scores for all perspectives and levels; grid, detection boxes, candidate horizon lines, clipping masks; tap regions for measurements and related whole-image critique; text copy and report-image sharing; cancellation and explicit partial failure states. Model/legal information is included in assets.
 
-## Critique severity (implemented in source)
-- **Mild**: forgiving technical thresholds, strengths-first headline.
-- **Balanced**: middle technical thresholds.
-- **Harsh**: tighter clipping and edge-contrast thresholds, defects-first headline.
-- **Quick / Standard / Expert** report detail modes.
-- **Critic Score**: explicit rule-based technical rubric (0–100); it is not an aesthetic model score. Severity changes thresholds but **never modifies raw NIMA scores**.
-- **ML Kit image labeling**: real on-device content tags with confidence; not a generative vision-language model.
-- Photographer personas are **inspired evaluation lenses**, not quotes or simulated identities.
+## Build through GitHub Actions
 
-## Outstanding production requirements
-- Actual multimodal VLM runtime with image preprocessing, quantized weights, tokenizer and Korean output; not implemented.
-- MediaPipe segmentation and overlay UI; not implemented.
-- Automated device/instrumentation tests and verified APK build; not confirmed.
-- Verify GitHub Actions model download, binary size and Android runtime compatibility from build logs.
+Push to `rebuild/offline-v2`, or use workflow_dispatch. CI verifies pinned SHA-256 weights, builds pinned llama.cpp for ARM64 and x86_64, runs Kotlin score tests, builds APK and device-test APK, runs Android lint, verifies APK signature/alignment/content, and runs real CPU NIMA + VLM + Korean inference. Successful jobs publish a prerelease with APK, complete source including models, and test evidence.
 
+Android Studio: open delivered source ZIP, install SDK 35 / NDK 28.2.13676358 and JDK 17. `bash scripts/prepare_runtime.sh android`, then `./gradlew assembleDebug`. Gradle wrapper is generated and included in the source artifact. Source Git checkout requires `python scripts/fetch_models.py` and `python scripts/fetch_licenses.py` first.
 
-## Recent additions
-- ML Kit on-device **person segmentation** with an overlay toggle. This is not MediaPipe and is not general-object segmentation.
-- Android share sheet exports a text critique report.
-- JUnit tests for Mild/Balanced/Harsh invariance of NIMA raw scores and report depth.
-- GitHub Actions now runs tests before APK packaging.
-- NIMA model weights are **not automatically assumed to exist**. Configure repository variables `NIMA_AESTHETIC_URL` and `NIMA_TECHNICAL_URL` with validated compatible TFLite model URLs. When absent, APK builds without weights and the app displays an explicit NIMA failure. Input preprocessing and tensor format must be verified against the chosen model.
+The app is signed with a CI debug certificate. Successive runs may use different debug certificates; uninstall the previous debug build before installing if Android reports a signature conflict. No public release signing key has been created.
 
-## Critical remaining work
-- A genuine local **multimodal VLM** with image encoder, language decoder, quantized weights, tokenizer, Android runtime and Korean generation has **not** been integrated. ML Kit labels are not a VLM substitute.
-- A successful Actions build and Galaxy S25 Ultra device test are not yet verified. Check Actions logs and artifacts before distributing the APK.
+## Verification honesty
 
-
-## Genuine image-aware Korean VLM critique (Gemini cloud)
-The app includes a user-triggered multimodal Gemini 2.5 Flash integration. Users enter their own Gemini API key in a masked field. Only after tapping the VLM critique button does the app send a downscaled JPEG and the chosen persona/severity/tone/depth to the Gemini API. Keys are held in Compose memory and not stored in preferences or source. This feature requires internet access, may incur API charges, and is **not offline/on-device inference**. Failed HTTP requests show errors rather than fabricated critiques.
-
-The intended offline local VLM (SmolVLM2 or equivalent with native Android multimodal runtime and verified quantized weights) remains unimplemented. ML Kit scene labels and segmentation run on device. Android build success and device inference have not been verified yet.
-
-
-## Offline VLM (Gemma 3n)
-The prior Gemini cloud implementation was removed. This app now uses MediaPipe Tasks GenAI 0.10.27 to run Gemma 3n multimodal vision inference locally, using an imported compatible `.task` model. The user selects a local model file with Android's document picker, which is copied to app-private storage. No API key, remote endpoint or INTERNET permission is used for critique. Select a **MediaPipe-compatible multimodal Gemma 3n E2B/E4B .task bundle**; text-only Gemma 3 models and arbitrary GGUF models are incompatible. See https://developers.google.com/edge/mediapipe/solutions/genai/llm_inference/android#image_input . Model weights are not bundled due to their size and distribution terms. The code path is implemented, but a successful CI build, model load and device inference are not yet verified. MediaPipe LLM Inference is maintenance-only; consider LiteRT-LM for a future migration.
-
-
-## SmolVLM 500M local rebuild
-The app now uses llama.cpp's local ARM64 `llama-server` built by GitHub Actions and invoked as a bundled executable, listening on 127.0.0.1 only. A localhost HTTP connection requires Android INTERNET permission and cleartext permission; **no remote inference endpoint is used**. Download both files from https://huggingface.co/ggml-org/SmolVLM-500M-Instruct-GGUF : `SmolVLM-500M-Instruct-Q8_0.gguf` and `mmproj-SmolVLM-500M-Instruct-Q8_0.gguf`. Import them separately in the app. They are not bundled. The binary is built from llama.cpp upstream at CI time. **Build, executable startup, image processing and real-device inference remain unverified.** The model is small and may produce limited Korean text; no translation model is embedded.
+GitHub host inference proves the shipped model files execute on Linux CPU. It **does not prove Galaxy S25 Ultra Android runtime behavior**. No physical device is connected to this task. Device latency, peak RAM, thermal behavior and Korean critique quality on real photos remain to be tested. The device instrumentation test sources and APK are supplied. See `docs/VALIDATION.md`.
