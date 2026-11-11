@@ -3,47 +3,58 @@
   "properties": {
     "summary": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "observations": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "interpretation": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "strengths": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "improvements": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "composition": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "exposure": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "color": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "sharpness": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "shooting": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     },
     "editing": {
       "type": "string",
-      "maxLength": 70
+      "maxLength": 110,
+      "pattern": "^[가-힣][^\\n]{0,109}$"
     }
   },
   "required": [

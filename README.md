@@ -10,9 +10,9 @@ Fresh native Android application for on-device photo criticism. Kotlin / Jetpack
 2. NIMA MobileNet AVA and TID2013 TFLite inference; untouched 10-bin probability distributions and expectation.
 3. OpenCV histogram, extreme luminance masks, RGB means, hue distribution, contrast, Laplacian variance, near-horizontal line candidates.
 4. MediaPipe EfficientDet-Lite0 object detection with position, size, confidence and surrounding frame space. Detection is limited to COCO categories; it does not recognize every possible subject.
-5. SmolVLM2-500M Q8 plus its image projector → schema-constrained observation / interpretation / eight rubric scores / confidence.
+5. SmolVLM2-500M Q8 plus its image projector → six short factual visual observations. Qwen3 judges eight rubric axes and must reference one of these observation fields; unsupported sources get zero confidence.
 6. Deterministic persona-weighted scoring, then continuous critic-level calibration.
-7. Sequential Qwen3-0.6B Q8 inference composes a Korean report from this evidence. No fixed generated critique or fallback scores.
+7. Sequential Qwen3-0.6B Q8 inference evaluates the grounded rubric and composes a Korean report from this evidence. No fixed generated critique or fallback scores.
 
 All **six weight files (1,202,541,635 bytes)** are in the APK. No first-run internet download. First use extracts verified weights to app-private storage (~1.3GB extra free space). Runtime HTTP is authenticated loopback only; no remote API, API key, telemetry or photo upload.
 

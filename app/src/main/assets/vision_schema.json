@@ -3,259 +3,36 @@
   "properties": {
     "description": {
       "type": "string",
-      "maxLength": 220
+      "maxLength": 260
     },
-    "MOMENT": {
-      "type": "object",
-      "properties": {
-        "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "observation": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "interpretation": {
-          "type": "string",
-          "maxLength": 120
-        }
-      },
-      "required": [
-        "score",
-        "confidence",
-        "observation",
-        "interpretation"
-      ],
-      "additionalProperties": false
+    "composition": {
+      "type": "string",
+      "maxLength": 260
     },
-    "GEOMETRY": {
-      "type": "object",
-      "properties": {
-        "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "observation": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "interpretation": {
-          "type": "string",
-          "maxLength": 120
-        }
-      },
-      "required": [
-        "score",
-        "confidence",
-        "observation",
-        "interpretation"
-      ],
-      "additionalProperties": false
+    "lighting": {
+      "type": "string",
+      "maxLength": 260
     },
-    "TONAL": {
-      "type": "object",
-      "properties": {
-        "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "observation": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "interpretation": {
-          "type": "string",
-          "maxLength": 120
-        }
-      },
-      "required": [
-        "score",
-        "confidence",
-        "observation",
-        "interpretation"
-      ],
-      "additionalProperties": false
+    "colors": {
+      "type": "string",
+      "maxLength": 260
     },
-    "LIGHT": {
-      "type": "object",
-      "properties": {
-        "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "observation": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "interpretation": {
-          "type": "string",
-          "maxLength": 120
-        }
-      },
-      "required": [
-        "score",
-        "confidence",
-        "observation",
-        "interpretation"
-      ],
-      "additionalProperties": false
+    "focus": {
+      "type": "string",
+      "maxLength": 260
     },
-    "COLOR": {
-      "type": "object",
-      "properties": {
-        "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "observation": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "interpretation": {
-          "type": "string",
-          "maxLength": 120
-        }
-      },
-      "required": [
-        "score",
-        "confidence",
-        "observation",
-        "interpretation"
-      ],
-      "additionalProperties": false
-    },
-    "LAYERS": {
-      "type": "object",
-      "properties": {
-        "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "observation": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "interpretation": {
-          "type": "string",
-          "maxLength": 120
-        }
-      },
-      "required": [
-        "score",
-        "confidence",
-        "observation",
-        "interpretation"
-      ],
-      "additionalProperties": false
-    },
-    "DEPTH": {
-      "type": "object",
-      "properties": {
-        "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "observation": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "interpretation": {
-          "type": "string",
-          "maxLength": 120
-        }
-      },
-      "required": [
-        "score",
-        "confidence",
-        "observation",
-        "interpretation"
-      ],
-      "additionalProperties": false
-    },
-    "EXPRESSION": {
-      "type": "object",
-      "properties": {
-        "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "observation": {
-          "type": "string",
-          "maxLength": 100
-        },
-        "interpretation": {
-          "type": "string",
-          "maxLength": 120
-        }
-      },
-      "required": [
-        "score",
-        "confidence",
-        "observation",
-        "interpretation"
-      ],
-      "additionalProperties": false
+    "spatial": {
+      "type": "string",
+      "maxLength": 260
     }
   },
   "required": [
     "description",
-    "MOMENT",
-    "GEOMETRY",
-    "TONAL",
-    "LIGHT",
-    "COLOR",
-    "LAYERS",
-    "DEPTH",
-    "EXPRESSION"
+    "composition",
+    "lighting",
+    "colors",
+    "focus",
+    "spatial"
   ],
   "additionalProperties": false
 }

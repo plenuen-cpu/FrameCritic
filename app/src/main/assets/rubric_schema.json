@@ -1,0 +1,400 @@
+{
+  "type": "object",
+  "properties": {
+    "MOMENT": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "description",
+            "composition",
+            "lighting",
+            "colors",
+            "focus",
+            "spatial",
+            "unknown"
+          ]
+        },
+        "interpretation": {
+          "type": "string",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "score",
+        "confidence",
+        "source",
+        "interpretation"
+      ],
+      "additionalProperties": false
+    },
+    "GEOMETRY": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "description",
+            "composition",
+            "lighting",
+            "colors",
+            "focus",
+            "spatial",
+            "unknown"
+          ]
+        },
+        "interpretation": {
+          "type": "string",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "score",
+        "confidence",
+        "source",
+        "interpretation"
+      ],
+      "additionalProperties": false
+    },
+    "TONAL": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "description",
+            "composition",
+            "lighting",
+            "colors",
+            "focus",
+            "spatial",
+            "unknown"
+          ]
+        },
+        "interpretation": {
+          "type": "string",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "score",
+        "confidence",
+        "source",
+        "interpretation"
+      ],
+      "additionalProperties": false
+    },
+    "LIGHT": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "description",
+            "composition",
+            "lighting",
+            "colors",
+            "focus",
+            "spatial",
+            "unknown"
+          ]
+        },
+        "interpretation": {
+          "type": "string",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "score",
+        "confidence",
+        "source",
+        "interpretation"
+      ],
+      "additionalProperties": false
+    },
+    "COLOR": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "description",
+            "composition",
+            "lighting",
+            "colors",
+            "focus",
+            "spatial",
+            "unknown"
+          ]
+        },
+        "interpretation": {
+          "type": "string",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "score",
+        "confidence",
+        "source",
+        "interpretation"
+      ],
+      "additionalProperties": false
+    },
+    "LAYERS": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "description",
+            "composition",
+            "lighting",
+            "colors",
+            "focus",
+            "spatial",
+            "unknown"
+          ]
+        },
+        "interpretation": {
+          "type": "string",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "score",
+        "confidence",
+        "source",
+        "interpretation"
+      ],
+      "additionalProperties": false
+    },
+    "DEPTH": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "description",
+            "composition",
+            "lighting",
+            "colors",
+            "focus",
+            "spatial",
+            "unknown"
+          ]
+        },
+        "interpretation": {
+          "type": "string",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "score",
+        "confidence",
+        "source",
+        "interpretation"
+      ],
+      "additionalProperties": false
+    },
+    "EXPRESSION": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "enum": [
+            0,
+            0.25,
+            0.5,
+            0.75,
+            1
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "description",
+            "composition",
+            "lighting",
+            "colors",
+            "focus",
+            "spatial",
+            "unknown"
+          ]
+        },
+        "interpretation": {
+          "type": "string",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "score",
+        "confidence",
+        "source",
+        "interpretation"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "MOMENT",
+    "GEOMETRY",
+    "TONAL",
+    "LIGHT",
+    "COLOR",
+    "LAYERS",
+    "DEPTH",
+    "EXPRESSION"
+  ],
+  "additionalProperties": false
+}
