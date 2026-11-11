@@ -22,6 +22,7 @@ import android.graphics.BitmapFactory
 import android.content.Intent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
 
 private val personas = listOf("Bresson", "Adams", "Leiter", "Fan Ho")
@@ -44,6 +45,10 @@ private fun CriticScreen() {
     var depth by remember { mutableStateOf(depths[1]) }
     var tone by remember { mutableStateOf(tones[1]) }
     var showMask by remember { mutableStateOf(false) }
+    var apiKey by remember { mutableStateOf("") }
+    var vlmResult by remember { mutableStateOf<Result<String>?>(null) }
+    var vlmLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri = it }
     val bitmap = remember(imageUri) {
@@ -139,6 +144,42 @@ private fun CriticScreen() {
                 else -> Text("NIMA 추론 실패: " + (nima!!.exceptionOrNull()?.message ?: "알 수 없는 오류"), color = Color(0xFFFFC107))
             }
             Text("사진가별 해설은 규칙 기반입니다. VLM은 아직 연결되지 않았습니다.", color = Color.LightGray)
+        }
+        if (bitmap != null && metrics != null) {
+            HorizontalDivider()
+            Text("VLM 사진 비평 · Gemini Cloud", style = MaterialTheme.typography.titleLarge)
+            Text("실제 사진을 Gemini 서버로 전송해 한국어 비평을 생성합니다. API 키는 저장하지 않습니다. 네트워크와 API 요금이 발생할 수 있습니다.", color = Color.LightGray)
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                label = { Text("Gemini API Key") },
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Button(enabled = !vlmLoading && apiKey.isNotBlank(), onClick = {
+                val selectedBitmap = bitmap
+                val selectedMetrics = metrics
+                val selectedSeverity = Severity.entries.first { it.label == level }
+                val selectedDepth = ReportDepth.entries.first { it.label == depth }
+                val selectedPersona = persona
+                val selectedTone = tone
+                val selectedKey = apiKey
+                val selectedNima = nima?.getOrNull()
+                vlmLoading = true
+                vlmResult = null
+                scope.launch {
+                    try {
+                        vlmResult = VlmCritic.critique(selectedBitmap, selectedKey, selectedPersona, selectedSeverity, selectedTone, selectedDepth, selectedMetrics, selectedNima)
+                    } finally {
+                        vlmLoading = false
+                    }
+                }
+            }) { Text(if (vlmLoading) "VLM 비평 생성 중..." else "사진을 전송하고 VLM 비평 생성") }
+            vlmResult?.fold(
+                onSuccess = { Text(it, color = Color.White) },
+                onFailure = { Text("VLM 오류: " + (it.message ?: "알 수 없는 오류"), color = Color(0xFFFFC107)) }
+            )
         }
         Text("선택 기준: $persona · $level · $depth · $tone", color = Color(0xFFB0BEC5))
     }
