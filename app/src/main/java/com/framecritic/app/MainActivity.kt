@@ -24,7 +24,8 @@ import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
 
 private val personas = listOf("Bresson", "Adams", "Leiter", "Fan Ho")
-private val levels = listOf("Generous", "Balanced", "Strict")
+private val levels = Severity.entries.map { it.label }
+private val depths = ReportDepth.entries.map { it.label }
 private val tones = listOf("Mentor", "Critic", "Analyst")
 
 class MainActivity : ComponentActivity() {
@@ -39,6 +40,7 @@ private fun CriticScreen() {
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var persona by remember { mutableStateOf(personas[0]) }
     var level by remember { mutableStateOf(levels[1]) }
+    var depth by remember { mutableStateOf(depths[1]) }
     var tone by remember { mutableStateOf(tones[1]) }
     val context = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri = it }
@@ -68,6 +70,8 @@ private fun CriticScreen() {
         ChoiceRow(personas, persona) { persona = it }
         Text("Critic Level", style = MaterialTheme.typography.titleMedium)
         ChoiceRow(levels, level) { level = it }
+        Text("Report Depth", style = MaterialTheme.typography.titleMedium)
+        ChoiceRow(depths, depth) { depth = it }
         Text("Critic Tone", style = MaterialTheme.typography.titleMedium)
         ChoiceRow(tones, tone) { tone = it }
         HorizontalDivider()
@@ -77,7 +81,15 @@ private fun CriticScreen() {
             Text("평균 휘도: %.1f%% · 평균 채도: %.1f%%".format(metrics.brightness * 100, metrics.saturation * 100))
             Text("암부 클리핑: %.1f%% · 하이라이트 클리핑: %.1f%%".format(metrics.darkClip * 100, metrics.brightClip * 100))
             Text("경계 대비 지표: %.4f".format(metrics.edgeContrast))
-            Text(CritiqueRules.report(metrics, persona, level, tone), color = Color.LightGray)
+            val severity = Severity.entries.first { it.label == level }
+            val reportDepth = ReportDepth.entries.first { it.label == depth }
+            val report = CriticModes.evaluate(metrics, nima?.getOrNull(), severity, reportDepth, persona)
+            Text(report.headline, style = MaterialTheme.typography.titleMedium)
+            Text("Critic Score (기술 기준): %.1f / 100".format(report.criterionScore))
+            report.findings.forEach { Text("• $it", color = Color.LightGray) }
+            report.recommendations.forEach { Text("→ $it", color = Color.LightGray) }
+            Text(report.disclosure, color = Color(0xFFFFC107))
+            Text("비평 말투: $tone", color = Color.LightGray)
             when {
                 nima == null -> Text("NIMA 모델 분석 중...", color = Color.LightGray)
                 nima!!.isSuccess -> {
@@ -88,7 +100,7 @@ private fun CriticScreen() {
             }
             Text("사진가별 해설은 규칙 기반입니다. VLM은 아직 연결되지 않았습니다.", color = Color.LightGray)
         }
-        Text("선택 기준: $persona · $level · $tone", color = Color(0xFFB0BEC5))
+        Text("선택 기준: $persona · $level · $depth · $tone", color = Color(0xFFB0BEC5))
     }
 }
 
