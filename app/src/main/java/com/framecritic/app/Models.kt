@@ -24,7 +24,7 @@ object ModelStore {
             val md=MessageDigest.getInstance("SHA-256")
             fun digest(f:File):String { md.reset();f.inputStream().use{input->val b=ByteArray(1024*1024);while(true){val n=input.read(b);if(n<0)break;md.update(b,0,n)}};return md.digest().joinToString(""){"%02x".format(it)} }
             if(file.exists() && file.length()==size && digest(file)==sha) continue
-            check(StatFs(folder.path).availableBytes>size+64*1024*1024) { "내장 모델을 준비할 저장 공간이 부족합니다. 약 1.3GB의 여유 공간을 확보하세요." }
+            check(StatFs(folder.path).availableBytes>size+64*1024*1024) { "내장 모델을 준비할 저장 공간이 부족합니다. 약 1.8GB의 여유 공간을 확보하세요." }
             val tmp=File(folder,"$name.part")
             try {
                 context.assets.open("models/$name").use{input->tmp.outputStream().use{out->val b=ByteArray(1024*1024);while(true){coroutineContext.ensureActive();val n=input.read(b);if(n<0)break;out.write(b,0,n)}}}

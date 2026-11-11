@@ -8,17 +8,17 @@ This file specifies validation scope. Actual outcomes and raw outputs are in the
 - Kotlin unit tests: NIMA expectation/spread, bounds, strictness monotonicity, different persona results, rejected invalid distributions, low confidence rejection.
 - ARM64 llama.cpp native build, Android compilation, debug signature, 16KB ZIP alignment, asset verification, lint, device-test APK compilation.
 - Linux CPU actual NIMA inference on two different synthetic images, image-dependent normalized distributions.
-- Linux CPU actual SmolVLM with image projector on two distinct images; schema validation and nonidentical descriptions.
-- Linux CPU Qwen3 report generation, schema validation and Korean character presence.
+- Linux CPU actual SmolVLM with image projector on two distinct images; red-circle / blue-rectangle grounding checks.
+- Linux CPU Qwen2.5 report generation, schema validation and Korean character presence.
 
-These tests are smoke tests. Korean character presence is NOT a language-quality test. Distinct descriptions do NOT establish image-grounding accuracy. Read the full JSON outputs. Host tests use the same vision prompt/schema and weights, but a shorter Korean test prompt. They do not execute Android ProcessBuilder, MediaPipe Android inference or photo picker/sharing.
+These tests are smoke tests. Korean character presence is NOT a language-quality test. Synthetic color/shape grounding checks do NOT establish real-photo accuracy. Read the full JSON outputs. Host tests use the same vision prompt/schema and weights, but a shorter Korean test prompt. They do not execute Android ProcessBuilder, MediaPipe Android inference or photo picker/sharing.
 
 ## Not run without an attached device
 
 Galaxy S25 Ultra install/launch, offline first run, Android native process launch and model loading, MediaPipe object detection, memory/latency/thermal measurements, UI interaction/share/rotation/lifecycle behavior, ten-real-photo Korean critique review. Do not mark these passed.
 
 Device procedure:
-1. Install `FrameCritic-2.0.0-arm64.apk` and matching AndroidTest APK. Leave ≥1.3GB extraction space beyond APK install space.
+1. Install `FrameCritic-2.0.0-arm64.apk` and matching AndroidTest APK. Leave ≥1.8GB extraction space beyond APK install space.
 2. Enable airplane mode before the first app launch. Import a photo; ensure six models initialize with no network.
 3. `adb shell am instrument -w com.framecritic.app.test/androidx.test.runner.AndroidJUnitRunner` runs bundled NIMA, OpenCV, MediaPipe, VLM and Korean tests. Keep device awake. A synthetic-image pass is not photographic-quality validation.
 4. Analyze portraits, landscapes, low light, intentional blur, silhouettes, monochrome and abstract/reflection images. Review observations against actual image, translations, strictness and persona differences.

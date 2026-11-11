@@ -149,7 +149,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
         Spacer(Modifier.height(16.dp))
     }
     if(info)AlertDialog(onDismissRequest={info=false},confirmButton={TextButton(onClick={info=false}){Text("닫기")}},title={Text("내장 모델 · 오프라인")},text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())){
-        Text("NIMA MobileNet · AVA / TID2013\nSmolVLM2-500M Q8 · 사진 이해\nQwen3-0.6B Q8 · 한국어 작성\nEfficientDet-Lite0 · MediaPipe 탐지\nOpenCV 4.12 · 영상 측정\nllama.cpp · ARM64 CPU\n\n모델 약 1.20GB. 최초 실행 시 APK 내부 파일을 풀어 앱 전용 공간에 보관합니다. 인터넷 다운로드는 없습니다. 사진을 외부로 보내지 않습니다.\n\nSmolVLM2는 영어 중심 소형 모델입니다. 한국어 편집 모델을 거쳐도 오인식·번역·비평 오류가 생길 수 있습니다. 시각적 주목도 모델은 포함하지 않았습니다.\n\n가중치·OpenCV·MediaPipe: Apache 2.0 (NIMA는 배포자 표기 기준). llama.cpp: MIT. 출처와 전문은 아래와 프로젝트 docs에 포함됩니다.",fontSize=13.sp)
+        Text("NIMA MobileNet · AVA / TID2013\nSmolVLM2-500M Q8 · 사진 이해\nQwen2.5-1.5B Q4_K_M · 한국어 작성\nEfficientDet-Lite0 · MediaPipe 탐지\nOpenCV 4.12 · 영상 측정\nllama.cpp · ARM64 CPU\n\n모델 약 1.68GB. 최초 실행 시 APK 내부 파일을 풀어 앱 전용 공간에 보관합니다. 인터넷 다운로드는 없습니다. 사진을 외부로 보내지 않습니다.\n\nSmolVLM2는 영어 중심 소형 모델입니다. 한국어 편집 모델을 거쳐도 오인식·번역·비평 오류가 생길 수 있습니다. 시각적 주목도 모델은 포함하지 않았습니다.\n\n가중치·OpenCV·MediaPipe: Apache 2.0 (NIMA는 배포자 표기 기준). llama.cpp: MIT. 출처와 전문은 아래와 프로젝트 docs에 포함됩니다.",fontSize=13.sp)
         val notices=remember{context.assets.open("THIRD_PARTY_NOTICES.md").bufferedReader().use{it.readText()}}
         Text(notices,fontSize=11.sp)
     }})

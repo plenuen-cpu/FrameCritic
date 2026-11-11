@@ -4,7 +4,7 @@ NIMA MobileNet (AVA aesthetic / TID2013 technical): idealo image-quality-assessm
 
 SmolVLM2-500M-Video-Instruct: Hugging Face Smol Models team, Apache-2.0. Q8_0 conversion and projector by ggml-org. https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct ; https://huggingface.co/ggml-org/SmolVLM2-500M-Video-Instruct-GGUF
 
-Qwen3-0.6B: Qwen / Alibaba Cloud, Apache-2.0, official Q8_0 GGUF. https://huggingface.co/Qwen/Qwen3-0.6B-GGUF
+Qwen2.5-1.5B-Instruct: Qwen / Alibaba Cloud, Apache-2.0, official Q4_K_M GGUF. https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF
 
 EfficientDet-Lite0 / MediaPipe: Google, Apache-2.0. https://ai.google.dev/edge/mediapipe/solutions/vision/object_detector ; https://github.com/google-ai-edge/mediapipe
 

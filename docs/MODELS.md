@@ -6,12 +6,12 @@
 | Gemma 3n E2B | Not embedded | Multilingual multimodal candidate; no comparative Korean benchmark performed | Official LiteRT preview .task ~3.14GB, larger than selected pipeline; no device benchmark performed | Gemma terms; gated download requires account acceptance |
 | Qwen2.5-VL-3B | Not embedded | Larger multilingual visual model; no comparative Korean benchmark performed | More weights / working memory; no device benchmark performed | 3B revision checked uses Qwen Research License, commercial use requires separate license |
 
-Qwen3-0.6B Q8 (639 MB, Apache-2.0) is additionally embedded as a **text-only Korean writer**. It receives only SmolVLM evidence and measured data, not the image. This is a practical language bridge, not a guarantee of expert Korean criticism. Both models are sequential CPU processes.
+Qwen2.5-1.5B Q4_K_M (1,117 MB, Apache-2.0) is additionally embedded as a **text-only Korean writer**. It receives only SmolVLM evidence and measured data, not the image. This is a practical language bridge, not a guarantee of expert Korean criticism. Both models are sequential CPU processes.
 
 Sources:
 - https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct
 - https://huggingface.co/ggml-org/SmolVLM2-500M-Video-Instruct-GGUF
-- https://huggingface.co/Qwen/Qwen3-0.6B-GGUF
+- https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF
 - https://huggingface.co/google/gemma-3n-E2B-it-litert-preview
 - https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct/blob/37ce9f696340e294a5d3e0e806466addd1b22b3a/LICENSE
 - https://huggingface.co/litert-community/NIMA-LiteRT
