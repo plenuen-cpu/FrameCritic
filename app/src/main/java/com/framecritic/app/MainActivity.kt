@@ -46,6 +46,8 @@ private fun CriticScreen() {
     var tone by remember { mutableStateOf(tones[1]) }
     var showMask by remember { mutableStateOf(false) }
     var modelFile by remember { mutableStateOf<java.io.File?>(null) }
+    var mmprojFile by remember { mutableStateOf<java.io.File?>(null) }
+    var importTarget by remember { mutableStateOf("model") }
     var modelImporting by remember { mutableStateOf(false) }
     var vlmResult by remember { mutableStateOf<Result<String>?>(null) }
     var vlmLoading by remember { mutableStateOf(false) }
@@ -57,7 +59,7 @@ private fun CriticScreen() {
             modelImporting = true
             scope.launch {
                 try {
-                    val target = java.io.File(context.filesDir, "gemma3n_vision.task")
+                    val target = java.io.File(context.filesDir, if (importTarget == "model") "smolvlm.gguf" else "smolvlm-mmproj.gguf")
                     withContext(Dispatchers.IO) {
                         context.contentResolver.openInputStream(uri)?.use { input ->
                             val temporary = java.io.File(context.filesDir, "gemma3n_vision.tmp")
@@ -66,7 +68,7 @@ private fun CriticScreen() {
                             check(temporary.renameTo(target)) { "모델 저장 실패" }
                         } ?: error("모델 파일을 열 수 없습니다.")
                     }
-                    modelFile = target
+                    if (importTarget == "model") modelFile = target else mmprojFile = target
                 } catch (error: Exception) {
                     vlmResult = Result.failure(error)
                 } finally {
@@ -171,16 +173,22 @@ private fun CriticScreen() {
         }
         if (bitmap != null && metrics != null) {
             HorizontalDivider()
-            Text("온디바이스 VLM · Gemma 3n", style = MaterialTheme.typography.titleLarge)
-            Text("사진과 프롬프트는 외부 서버로 전송하지 않습니다. 호환되는 Gemma 3n 멀티모달 .task 모델을 최초 1회 가져와야 합니다.", color = Color.LightGray)
-            OutlinedButton(enabled = !modelImporting && !vlmLoading, onClick = { modelPicker.launch(arrayOf("*/*")) }) {
-                Text(if (modelImporting) "모델 가져오는 중..." else "로컬 Gemma 3n .task 모델 선택")
+            Text("온디바이스 VLM · SmolVLM 500M", style = MaterialTheme.typography.titleLarge)
+            Text("사진은 외부로 전송하지 않습니다. GGUF 언어모델과 mmproj 비전 인코더를 각각 가져오세요.", color = Color.LightGray)
+            OutlinedButton(enabled = !modelImporting && !vlmLoading, onClick = { importTarget = "model"; modelPicker.launch(arrayOf("*/*")) }) {
+                Text(if (modelImporting) "모델 가져오는 중..." else "SmolVLM GGUF 모델 선택")
             }
-            Text(if (modelFile != null) "모델 준비됨: " + (modelFile!!.length() / 1048576) + " MiB" else "모델 미설치", color = Color.LightGray)
-            Button(enabled = !vlmLoading && modelFile != null, onClick = {
+            OutlinedButton(enabled = !modelImporting && !vlmLoading, onClick = {
+                importTarget = "mmproj"
+                modelPicker.launch(arrayOf("*/*"))
+            }) { Text("mmproj GGUF 비전 인코더 선택") }
+            Text("모델: " + (modelFile?.length()?.div(1048576)?.toString() ?: "미설치") +
+                " MiB · mmproj: " + (mmprojFile?.length()?.div(1048576)?.toString() ?: "미설치") + " MiB", color = Color.LightGray)
+            Button(enabled = !vlmLoading && modelFile != null && mmprojFile != null, onClick = {
                 val selectedBitmap = bitmap
                 val selectedMetrics = metrics
                 val selectedModel = modelFile ?: return@Button
+                val selectedMmproj = mmprojFile ?: return@Button
                 val selectedSeverity = Severity.entries.first { it.label == level }
                 val selectedDepth = ReportDepth.entries.first { it.label == depth }
                 val selectedPersona = persona
@@ -190,7 +198,7 @@ private fun CriticScreen() {
                 vlmResult = null
                 scope.launch {
                     try {
-                        vlmResult = VlmCritic.critique(context, selectedBitmap, selectedModel, selectedPersona, selectedSeverity, selectedTone, selectedDepth, selectedMetrics, selectedNima)
+                        vlmResult = VlmCritic.critique(context, selectedBitmap, selectedModel, selectedMmproj, selectedPersona, selectedSeverity, selectedTone, selectedDepth, selectedMetrics, selectedNima)
                     } finally {
                         vlmLoading = false
                     }
