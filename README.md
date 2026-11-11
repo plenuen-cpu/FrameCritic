@@ -44,3 +44,15 @@ Model licenses, Android compatibility and runtime behavior must be validated bef
 - MediaPipe segmentation and overlay UI; not implemented.
 - Automated device/instrumentation tests and verified APK build; not confirmed.
 - Verify GitHub Actions model download, binary size and Android runtime compatibility from build logs.
+
+
+## Recent additions
+- ML Kit on-device **person segmentation** with an overlay toggle. This is not MediaPipe and is not general-object segmentation.
+- Android share sheet exports a text critique report.
+- JUnit tests for Mild/Balanced/Harsh invariance of NIMA raw scores and report depth.
+- GitHub Actions now runs tests before APK packaging.
+- NIMA model weights are **not automatically assumed to exist**. Configure repository variables `NIMA_AESTHETIC_URL` and `NIMA_TECHNICAL_URL` with validated compatible TFLite model URLs. When absent, APK builds without weights and the app displays an explicit NIMA failure. Input preprocessing and tensor format must be verified against the chosen model.
+
+## Critical remaining work
+- A genuine local **multimodal VLM** with image encoder, language decoder, quantized weights, tokenizer, Android runtime and Korean generation has **not** been integrated. ML Kit labels are not a VLM substitute.
+- A successful Actions build and Galaxy S25 Ultra device test are not yet verified. Check Actions logs and artifacts before distributing the APK.
