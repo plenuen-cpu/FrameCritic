@@ -42,6 +42,7 @@ private fun CriticScreen() {
     var level by remember { mutableStateOf(levels[1]) }
     var depth by remember { mutableStateOf(depths[1]) }
     var tone by remember { mutableStateOf(tones[1]) }
+    var showMask by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri = it }
     val bitmap = remember(imageUri) {
@@ -60,6 +61,10 @@ private fun CriticScreen() {
         value = null
         if (bitmap != null) value = SceneLabels.detect(bitmap)
     }
+    val personOverlay by produceState<Result<android.graphics.Bitmap>?>(initialValue = null, bitmap, showMask) {
+        value = null
+        if (bitmap != null && showMask) value = PersonMask.overlay(bitmap)
+    }
     Column(
         Modifier.fillMaxSize().background(Color(0xFF101114)).verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -67,8 +72,16 @@ private fun CriticScreen() {
         Text("FrameCritic", style = MaterialTheme.typography.headlineLarge)
         Text("Photographic critique · on-device roadmap", color = Color.LightGray)
         Button(onClick = { picker.launch("image/*") }) { Text("사진 선택") }
-        bitmap?.let {
-            Image(it.asImageBitmap(), contentDescription = "선택한 사진", modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp), contentScale = ContentScale.Fit)
+        if (bitmap != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("인물 마스크 보기")
+                Switch(checked = showMask, onCheckedChange = { showMask = it })
+            }
+            val shown = if (showMask) personOverlay?.getOrNull() ?: bitmap else bitmap
+            Image(shown.asImageBitmap(), contentDescription = "선택한 사진", modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp), contentScale = ContentScale.Fit)
+        }
+        if (showMask && personOverlay?.isFailure == true) {
+            Text("인물 마스크 생성 실패: " + (personOverlay?.exceptionOrNull()?.message ?: "오류"), color = Color(0xFFFFC107))
         }
         Text("Photographer Persona", style = MaterialTheme.typography.titleMedium)
         ChoiceRow(personas, persona) { persona = it }
