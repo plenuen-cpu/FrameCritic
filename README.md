@@ -56,3 +56,9 @@ Model licenses, Android compatibility and runtime behavior must be validated bef
 ## Critical remaining work
 - A genuine local **multimodal VLM** with image encoder, language decoder, quantized weights, tokenizer, Android runtime and Korean generation has **not** been integrated. ML Kit labels are not a VLM substitute.
 - A successful Actions build and Galaxy S25 Ultra device test are not yet verified. Check Actions logs and artifacts before distributing the APK.
+
+
+## Genuine image-aware Korean VLM critique (Gemini cloud)
+The app includes a user-triggered multimodal Gemini 2.5 Flash integration. Users enter their own Gemini API key in a masked field. Only after tapping the VLM critique button does the app send a downscaled JPEG and the chosen persona/severity/tone/depth to the Gemini API. Keys are held in Compose memory and not stored in preferences or source. This feature requires internet access, may incur API charges, and is **not offline/on-device inference**. Failed HTTP requests show errors rather than fabricated critiques.
+
+The intended offline local VLM (SmolVLM2 or equivalent with native Android multimodal runtime and verified quantized weights) remains unimplemented. ML Kit scene labels and segmentation run on device. Android build success and device inference have not been verified yet.
