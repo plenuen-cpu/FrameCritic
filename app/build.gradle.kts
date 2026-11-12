@@ -12,13 +12,16 @@ android {
         targetSdk = 35
         versionCode = 21
         versionName = "2.0.1"
+        // GitHub Actions run number is the same number the release tag uses (offline-v2-N),
+        // so the Build label on screen identifies the installed APK exactly.
+        buildConfigField("int", "CI_RUN_NUMBER", System.getenv("GITHUB_RUN_NUMBER") ?: "0")
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     // 빌드 58부터 앱은 네이티브 추론 프로세스를 쓰지 않는다. 검증용으로만 만드는
     // libframecritic-server.so(~90MB)는 APK에 넣지 않는다.
     packaging { jniLibs { useLegacyPackaging = true; excludes += "**/libframecritic-server.so" } }

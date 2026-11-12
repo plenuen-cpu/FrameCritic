@@ -26,8 +26,8 @@ class PipelineFallbackTest {
         assertEquals(10,n.probabilities.size)
         assertEquals(1.0,n.probabilities.sum().toDouble(),1e-6)
         // 중립값은 점수 계산이 요구하는 범위 안에 있어야 한다.
-        runCatching{Scoring.evaluate(n.aesthetic,List(Axis.entries.size){Evidence(.5,.42,"관찰","해석")},Persona.BRESSON,Level.BALANCED)}
-            .onFailure{fail("중립값으로 점수를 계산하지 못했습니다: ${f.message}")}
+        val scored=runCatching{Scoring.evaluate(n.aesthetic,List(Axis.entries.size){Evidence(.5,.42,"관찰","해석")},Persona.BRESSON,Level.BALANCED)}
+        assertTrue("중립값으로 점수를 계산하지 못했습니다: ${scored.exceptionOrNull()?.message}",scored.isSuccess)
     }
 
     @Test fun neutralMetricsCarrySafeDefaults() {
