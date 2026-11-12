@@ -57,15 +57,17 @@ import kotlin.math.roundToInt
 
 private val Ink=Color(0xFFECECE7)
 private val Accent=Color(0xFFC4DAA8)
+private val CardBg=Color(0xFF1A1C1A)
+private val Hairline=Color(0xFF2A2C2A)
 
 /** 로컬 빌드에서 쓸 기본 빌드 번호. CI 빌드는 릴리스 태그와 같은 런 번호를 쓴다. */
-const val BUILD_NUMBER=64
+const val BUILD_NUMBER=65
 
 /** 화면과 오류 기록에 쓰는 버전 표기. 릴리스 태그(offline-v2-N)의 N과 같은 번호를 보여준다. */
 fun appVersion(context:Context):String {
     val info=runCatching{context.packageManager.getPackageInfo(context.packageName,0)}.getOrNull()
     val build=if(BuildConfig.CI_RUN_NUMBER>0) BuildConfig.CI_RUN_NUMBER else BUILD_NUMBER
-    return "v${info?.versionName?:"2.0.2"} (Build $build)"
+    return "v${info?.versionName?:"2.1.0"} (Build $build)"
 }
 
 /** 전역 비정상 종료 로거. 스택 트레이스를 파일에 남기고 다음 실행에서 보여준 뒤 지운다. */
@@ -142,113 +144,144 @@ class MainActivity:ComponentActivity(){
             }
         })
 }
-@Composable fun <T> Choice(title:String,items:List<T>,selected:T,label:(T)->String,enabled:Boolean,onSelect:(T)->Unit){
-    Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
-        Text(title,color=Color.Gray,fontSize=12.sp)
-        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-            items.forEach{item->FilterChip(selected=item==selected,onClick={onSelect(item)},enabled=enabled,label={Text(label(item))})}
-    }
-}
-}
+
+/**
+ * 원터치 화면.
+ * 사진을 고르고 버튼을 한 번 누르면, 점수와 자연스러운 비평 카드가 바로 이어진다.
+ * 관점·엄격도·톤·깊이 같은 선택지는 화면에서 없애고, 기본값(균형 잡힌 시선 · 멘토 톤)으로 돈다.
+ * 수치는 맨 아래 '상세 측정 데이터 및 기술적 근거'를 펼쳤을 때만 보인다.
+ */
 @Composable fun CriticScreen(version:String="",vm:CriticViewModel=viewModel()){
     val s by vm.state.collectAsStateWithLifecycle();val context=LocalContext.current
     val view=LocalView.current
     DisposableEffect(s.busy){view.keepScreenOn=s.busy;onDispose{view.keepScreenOn=false}}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){it?.let(vm::load)}
     val scope=rememberCoroutineScope();var sharing by remember{mutableStateOf(false)};var info by remember{mutableStateOf(false)}
-    Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
+    Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
             Column{Text("FRAMECRITIC",fontSize=24.sp,fontWeight=FontWeight.Medium,letterSpacing=2.sp);Text("$version · 사진을 보고, 근거를 읽다",fontSize=12.sp,color=Color.Gray)}
             TextButton(onClick={info=true}){Text("모델 정보")}
         }
         if(s.bitmap==null){
-            Box(Modifier.fillMaxWidth().height(280.dp).background(Color(0xFF191B19),RoundedCornerShape(8.dp)).clickable(enabled=!s.busy){picker.launch("image/*")},contentAlignment=Alignment.Center){
-                Column(horizontalAlignment=Alignment.CenterHorizontally){Text("+",fontSize=40.sp,color=Accent);Text("사진 불러오기");Text("모든 분석은 기기 안에서",fontSize=12.sp,color=Color.Gray)}
+            Box(Modifier.fillMaxWidth().height(300.dp).background(CardBg,RoundedCornerShape(14.dp)).clickable(enabled=!s.busy){picker.launch("image/*")},contentAlignment=Alignment.Center){
+                Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)){
+                    Text("+",fontSize=44.sp,color=Accent)
+                    Text("사진 불러오기",fontSize=16.sp)
+                    Text("빛과 색, 구도를 한 장에서 읽어 냅니다",fontSize=12.sp,color=Color.Gray)
+                    Text("모든 분석은 기기 안에서",fontSize=11.sp,color=Color.Gray)
+                }
             }
         }else{
             PhotoAnalysis(s.bitmap!!,s.analysis,s.report)
-            TextButton(onClick={picker.launch("image/*")},enabled=!s.busy){Text("다른 사진 선택")}
+            TextButton(onClick={picker.launch("image/*")},enabled=!s.busy,contentPadding=PaddingValues(0.dp)){Text("다른 사진 선택",fontSize=13.sp,color=Color.Gray)}
         }
-        Text("PHOTOGRAPHIC PERSPECTIVE",fontSize=11.sp,letterSpacing=1.sp,color=Color.Gray)
-        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)){
-            Persona.entries.forEach{p->
-                val selected=p==s.persona
-                Column(Modifier.width(205.dp).border(1.dp,if(selected)Accent else Color(0xFF343634),RoundedCornerShape(8.dp)).clickable(enabled=!s.busy){vm.setOptions(p=p)}.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-                    Text(p.title,fontSize=15.sp,color=if(selected)Accent else Ink,fontWeight=FontWeight.Medium)
-                    Text(p.subtitle,fontSize=12.sp,color=Color.Gray)
-                }
-            }
+        Button(onClick={vm.analyze()},enabled=s.bitmap!=null&&!s.busy,modifier=Modifier.fillMaxWidth().height(56.dp),shape=RoundedCornerShape(12.dp)){
+            Text(if(s.analysis==null)"사진 분석하기" else "다시 분석하기",fontSize=16.sp,fontWeight=FontWeight.Medium)
         }
-        Text("사진가의 미학에서 영감을 받은 관점입니다. 본인의 평가나 발언이 아닙니다.",fontSize=11.sp,color=Color.Gray)
-        Choice("평가 엄격도",Level.entries,s.level,{it.title},!s.busy){vm.setOptions(l=it)}
-        Choice("표현 방식 · 점수와 독립",Tone.entries,s.tone,{it.title},!s.busy){vm.setOptions(t=it)}
-        Choice("리포트 깊이",Depth.entries,s.depth,{it.title},!s.busy){vm.setOptions(d=it)}
-        Button(onClick={vm.analyze()},enabled=s.bitmap!=null&&!s.busy,modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(8.dp)){
-            Text(if(s.analysis!=null)"선택한 관점으로 리포트 생성" else "사진 분석하기")
+        if(s.busy){
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(s.progress,fontSize=12.sp,color=Color.Gray)
+            TextButton(onClick=vm::cancel,contentPadding=PaddingValues(0.dp)){Text("취소",fontSize=13.sp)}
         }
-        if(s.busy){LinearProgressIndicator(Modifier.fillMaxWidth());Text(s.progress,fontSize=13.sp);TextButton(onClick=vm::cancel){Text("취소")}}
-        s.error?.let{Text(it,color=MaterialTheme.colorScheme.error)}
-        s.analysis?.let{a->
-            HorizontalDivider(color=Color.DarkGray)
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
-                ScoreTile("NIMA 미적 원점수",a.nima.aesthetic)
-                ScoreTile("Persona · ${s.level.title}",s.report?.score?.adjusted)
-            }
-            Text(safeFormat("기술 원점수 %.2f / 10 · NIMA 분포 표준편차 %.2f",a.nima.technical,a.nima.deviation),fontSize=12.sp,color=Color.Gray)
-            Text("NIMA 1–10점 확률분포",fontSize=12.sp)
-            val heights=remember(a.nima.probabilities){nimaBarHeights(a.nima.probabilities)}
-            if(heights.size==10){
-                Row(Modifier.fillMaxWidth().height(62.dp),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.Bottom){
-                    heights.forEachIndexed{i,h->Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally){Box(Modifier.fillMaxWidth().height(h.dp).background(Accent));Text("${i+1}",fontSize=10.sp,color=Color.Gray)}}
-                }
-            }else Text("확률분포를 그리지 못했습니다. 사진을 다시 선택해 주세요.",fontSize=12.sp,color=MaterialTheme.colorScheme.error)
+        s.error?.let{Text(it,color=MaterialTheme.colorScheme.error,fontSize=13.sp)}
+        s.analysis?.let{analysis->
+            HorizontalDivider(color=Hairline)
+            ScoreHero(analysis,s.report?.score)
             s.report?.let{report->
-                report.score?.let{score->
-                    Text("점수 산정",fontWeight=FontWeight.Medium)
-                    Text("NIMA 40% + 사진가 관점 60%. 사진가 관점은 항목 가중치 × 측정 근거 신뢰도로 정규화합니다.\n엄격도 보정: 1 + 9 × x^γ (x는 0~1 기본점수, γ는 Generous 0.75 / Balanced 1 / Strict 1.5).",fontSize=12.sp,color=Color.Gray)
-                    Text(safeFormat("관점 점수 %.2f · 보정 전 %.2f → %.2f\n가중 신뢰도 %.0f%% · 경험적 평가 함수이며 인간 심사위원 점수로 검증된 척도가 아닙니다.",score.weighted,score.base,score.adjusted,score.coverage*100),fontSize=12.sp)
-                    a.assessment.let{scene->
-                        val important=score.contributions.indices.filter{it in Axis.entries.indices}.sortedByDescending{score.contributions[it]}.take(3)
-                        Text("이 관점의 점수에 크게 기여한 항목: "+important.joinToString{Axis.entries[it].title}+". 다른 관점은 같은 사진 근거에 다른 가중치를 적용합니다.",fontSize=12.sp)
-                        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(16.dp)){
-                            Level.entries.forEach{l->val scoreText=runCatching{"%.2f".format(Scoring.evaluate(a.nima.aesthetic,scene.evidence,report.persona,l).adjusted)}.getOrElse{"—"};Text("${l.title} $scoreText",fontSize=12.sp)}
-                        }
-                        Persona.entries.forEach{p->val other=runCatching{Scoring.evaluate(a.nima.aesthetic,scene.evidence,p,report.level)}.getOrNull();Text("${p.title}: ${other?.adjusted?.let{"%.2f".format(it)}?:"신뢰도 부족"}",fontSize=12.sp,color=Color.Gray)}
-                        Axis.entries.forEachIndexed{i,axis->
-                            Text("${axis.title} · 가중치 ${roundSafe(report.persona.weights[i]*100.0)}% · 근거 ${f2s(scene.evidence[i].score)} · 신뢰도 ${roundSafe(scene.evidence[i].confidence*100.0)}%",fontSize=11.sp,color=Color.Gray)
-                        }
-                    }
-                }
-                report.failure?.let{Text(it,color=MaterialTheme.colorScheme.error)}
-                report.sections.forEach{(heading,body)->Text(heading,fontSize=17.sp,fontWeight=FontWeight.Medium);Text(body,fontSize=14.sp,lineHeight=23.sp)}
+                report.failure?.let{Text(it,fontSize=12.sp,color=Color.Gray)}
+                report.sections.forEach{(title,body)->CritiqueCard(title,body)}
                 if(report.sections.isNotEmpty())Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                    OutlinedButton(onClick={val cm=context.getSystemService(Context.CLIPBOARD_SERVICE)as ClipboardManager;val copy=runCatching{report.text(a)}.getOrElse{"리포트 텍스트를 만들지 못했습니다."};cm.setPrimaryClip(ClipData.newPlainText("FrameCritic",copy));Toast.makeText(context,"리포트를 복사했습니다",Toast.LENGTH_SHORT).show()}){Text("텍스트 복사")}
-                    OutlinedButton(enabled=!sharing,onClick={sharing=true;scope.launch{try{val file=withContext(Dispatchers.IO){renderShare(context,s.bitmap!!,runCatching{report.text(a)}.getOrElse{"리포트 텍스트를 만들지 못했습니다."})};val uri=FileProvider.getUriForFile(context,"${context.packageName}.files",file);context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="image/png";putExtra(Intent.EXTRA_STREAM,uri);clipData=ClipData.newRawUri("FrameCritic",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"리포트 공유"))}catch(e:OutOfMemoryError){Toast.makeText(context,"공유 이미지를 만들 메모리가 부족합니다.",Toast.LENGTH_LONG).show()}catch(e:Throwable){Toast.makeText(context,e.message,Toast.LENGTH_LONG).show()}finally{sharing=false}}}){Text(if(sharing)"만드는 중" else "이미지 공유")}
+                    OutlinedButton(onClick={
+                        val cm=context.getSystemService(Context.CLIPBOARD_SERVICE)as ClipboardManager
+                        val copy=runCatching{report.text(analysis)}.getOrElse{"리포트 텍스트를 만들지 못했습니다."}
+                        cm.setPrimaryClip(ClipData.newPlainText("FrameCritic",copy))
+                        Toast.makeText(context,"리포트를 복사했습니다",Toast.LENGTH_SHORT).show()
+                    }){Text("텍스트 복사",fontSize=13.sp)}
+                    OutlinedButton(enabled=!sharing,onClick={
+                        sharing=true
+                        scope.launch{
+                            try{
+                                val file=withContext(Dispatchers.IO){renderShare(context,s.bitmap!!,runCatching{report.text(analysis)}.getOrElse{"리포트 텍스트를 만들지 못했습니다."})}
+                                val uri=FileProvider.getUriForFile(context,"${context.packageName}.files",file)
+                                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="image/png";putExtra(Intent.EXTRA_STREAM,uri);clipData=ClipData.newRawUri("FrameCritic",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"리포트 공유"))
+                            }catch(e:OutOfMemoryError){Toast.makeText(context,"공유 이미지를 만들 메모리가 부족합니다.",Toast.LENGTH_LONG).show()}
+                            catch(e:Throwable){Toast.makeText(context,e.message,Toast.LENGTH_LONG).show()}
+                            finally{sharing=false}
+                        }
+                    }){Text(if(sharing)"만드는 중" else "이미지 공유",fontSize=13.sp)}
                 }
             }
-            Text("측정 결과 · OpenCV",fontSize=17.sp,fontWeight=FontWeight.Medium)
-            Text(safeFormat("휘도 %.1f/255 · 하이라이트 %.2f%% · 암부 %.2f%%\n전역 대비 %.2f · 국소 대비 %.2f · Laplacian 분산 %.2f\n평균 RGB %s",a.metrics.luminance,a.metrics.highlights*100,a.metrics.shadows*100,a.metrics.contrast,a.metrics.localContrast,a.metrics.sharpness,a.metrics.rgb.joinToString{"%.1f".format(it)}),fontSize=13.sp,lineHeight=21.sp)
-            Histogram(a.metrics.histogram)
-            Text("밝기 극단값은 의도된 표현일 수 있습니다. RGB 평균으로 조명색을 확정할 수 없고, 선명도 수치는 피사체·해상도에 따라 달라집니다.",fontSize=11.sp,color=Color.Gray)
-            Text("MediaPipe 탐지 ${a.subjects.size}개 · 분석 ${if(a.elapsedMs<1000) "${a.elapsedMs}ms" else "%.1f초".format(a.elapsedMs/1000.0)}",fontSize=12.sp,color=Color.Gray)
-            a.subjects.forEach{Text("${it.label} · 신뢰도 ${roundSafe(it.confidence*100.0)}% · 프레임 ${roundSafe(it.box.width()*it.box.height()*100.0)}%",fontSize=12.sp)}
-            a.warnings.forEach{Text(it,color=MaterialTheme.colorScheme.error,fontSize=12.sp)}
-            a.assessment.let{assessment->
-                var expanded by remember(assessment){mutableStateOf(false)}
-                TextButton(onClick={expanded=!expanded}){Text(if(expanded)"근거 접기" else "측정 근거 자세히 보기")}
-                if(expanded){Text(assessment.description,fontSize=12.sp);Axis.entries.forEachIndexed{i,axis->Text("${axis.title}\n관찰: ${assessment.evidence[i].observation}\n해석: ${assessment.evidence[i].interpretation}",fontSize=12.sp)}}
-            }
+            MeasurementSection(analysis,s.report?.score)
         }
         Spacer(Modifier.height(16.dp))
     }
     if(info)AlertDialog(onDismissRequest={info=false},confirmButton={TextButton(onClick={info=false}){Text("닫기")}},title={Text("내장 모델 · 오프라인")},text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())){
         Text("앱 $version · 측정 기반 오프라인 크리틱",fontSize=13.sp,color=MaterialTheme.colorScheme.primary)
-        Text("NIMA MobileNet · AVA / TID2013 미적·기술 분포\nEfficientDet-Lite0 · MediaPipe 피사체 탐지\nOpenCV 4.12 · 영상 측정\nFrameCritic 측정 크리틱 엔진 · 기기 내 결정론적 문장 생성\n\n내장 모델 약 17MB. 최초 실행 시 TFLite 모델 3개만 앱 전용 공간으로 복사합니다. 외부 추론 프로세스나 인터넷 다운로드가 없고, 사진을 외부로 보내지 않습니다.\n\n비평 문장은 측정값에서 규칙으로 생성합니다. 같은 사진과 같은 옵션이면 같은 결과가 나오며, 측정되지 않은 피사체·의도·감정을 사실처럼 추가하지 않습니다. 시각적 주목도 모델은 포함하지 않았습니다.\n\n가중치·OpenCV·MediaPipe: Apache 2.0 (NIMA는 배포자 표기 기준). 출처와 전문은 아래와 프로젝트 docs에 포함됩니다.",fontSize=13.sp)
+        Text("NIMA MobileNet · AVA / TID2013 미적·기술 분포\nEfficientDet-Lite0 · MediaPipe 피사체 탐지\nOpenCV 4.12 · 영상 측정\nFrameCritic 측정 크리틱 엔진 · 기기 내 결정론적 문장 생성\n\n내장 모델 약 17MB. 최초 실행 시 TFLite 모델 3개만 앱 전용 공간으로 복사합니다. 외부 추론 프로세스나 인터넷 다운로드가 없고, 사진을 외부로 보내지 않습니다.\n\n비평 문장은 측정값에서 규칙으로 생성합니다. 같은 사진이면 같은 결과가 나오며, 측정되지 않은 피사체·의도·감정을 사실처럼 추가하지 않습니다. 원시 수치는 맨 아래 '상세 측정 데이터 및 기술적 근거'에만 남깁니다.\n\n가중치·OpenCV·MediaPipe: Apache 2.0 (NIMA는 배포자 표기 기준). 출처와 전문은 아래와 프로젝트 docs에 포함됩니다.",fontSize=13.sp)
         val notices=remember{context.assets.open("THIRD_PARTY_NOTICES.md").bufferedReader().use{it.readText()}}
         Text(notices,fontSize=11.sp)
     }})
 }
-@Composable fun ScoreTile(label:String,score:Double?){Column{Text(label,fontSize=11.sp,color=Color.Gray);Text(score?.takeIf{it.isFinite()}?.let{"%.2f".format(it)}?:"—",fontSize=35.sp,fontWeight=FontWeight.Light);Text("/ 10",fontSize=10.sp,color=Color.Gray)}}
+
+/** 점수 카드. 큰 숫자와 한 줄 인상만 두고, 산식은 아래 측정 근거로 내린다. */
+@Composable fun ScoreHero(analysis:Analysis,score:ScoreResult?){
+    Column(verticalArrangement=Arrangement.spacedBy(4.dp)){
+        Row(verticalAlignment=Alignment.Bottom){
+            Text(score?.adjusted?.takeIf{it.isFinite()}?.let{"%.1f".format(it)}?:"—",fontSize=62.sp,fontWeight=FontWeight.Light)
+            Text("/ 10",fontSize=14.sp,color=Color.Gray,modifier=Modifier.padding(bottom=12.dp,start=4.dp))
+        }
+        Text(score?.let{CriticEngine.verdict(analysis.assessment,it.adjusted)}?:"",fontSize=16.sp)
+        Text("사진 한 장을 10점 만점으로 본 경험적 점수입니다.",fontSize=11.sp,color=Color.Gray)
+    }
+}
+
+/** 비평 한 항목. 제목과 본문만 있는 카드. */
+@Composable fun CritiqueCard(title:String,body:String){
+    Column(Modifier.fillMaxWidth().background(CardBg,RoundedCornerShape(14.dp)).padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
+        Text(title,fontSize=12.sp,color=Accent,letterSpacing=1.sp)
+        Text(body,fontSize=15.sp,lineHeight=25.sp)
+    }
+}
+
+/** 접었을 때는 한 줄, 펼치면 모든 수치와 근거 문장을 보여준다. */
+@Composable fun MeasurementSection(analysis:Analysis,score:ScoreResult?){
+    var open by remember(analysis){mutableStateOf(false)}
+    HorizontalDivider(color=Hairline)
+    Row(Modifier.fillMaxWidth().clickable{open=!open}.padding(vertical=4.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
+        Text("상세 측정 데이터 및 기술적 근거",fontSize=13.sp,color=Color.Gray)
+        Text(if(open)"접기" else "펼치기",fontSize=13.sp,color=Accent)
+    }
+    if(open){
+        CriticEngine.measurements(analysis.assessment,score).forEach{group->
+            Text(group.title,fontSize=12.sp,color=Accent,modifier=Modifier.padding(top=12.dp,bottom=2.dp))
+            group.rows.forEach{(label,value)->
+                Row(Modifier.fillMaxWidth().padding(vertical=3.dp)){
+                    Text(label,fontSize=12.sp,color=Color.Gray,modifier=Modifier.weight(1f))
+                    Text(value,fontSize=12.sp)
+                }
+            }
+        }
+        Text("NIMA 1–10점 확률분포",fontSize=12.sp,color=Accent,modifier=Modifier.padding(top=12.dp,bottom=4.dp))
+        val heights=remember(analysis.nima.probabilities){nimaBarHeights(analysis.nima.probabilities)}
+        if(heights.size==10){
+            Row(Modifier.fillMaxWidth().height(62.dp),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.Bottom){
+                heights.forEachIndexed{i,h->Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally){Box(Modifier.fillMaxWidth().height(h.dp).background(Accent));Text("${i+1}",fontSize=10.sp,color=Color.Gray)}}
+            }
+        }else Text("확률분포를 그리지 못했습니다. 사진을 다시 선택해 주세요.",fontSize=12.sp,color=MaterialTheme.colorScheme.error)
+        Text("휘도 히스토그램",fontSize=12.sp,color=Accent,modifier=Modifier.padding(top=12.dp))
+        Histogram(analysis.metrics.histogram)
+        Text("항목별 기술 관찰",fontSize=12.sp,color=Accent,modifier=Modifier.padding(top=12.dp))
+        CriticEngine.evidenceLines(analysis.assessment).forEach{(title,body)->
+            Text(title,fontSize=12.sp,modifier=Modifier.padding(top=6.dp))
+            Text(body,fontSize=12.sp,color=Color.Gray,lineHeight=19.sp)
+        }
+        Text("MediaPipe 탐지 ${analysis.subjects.size}개 · 분석 ${if(analysis.elapsedMs<1000) "${analysis.elapsedMs}ms" else "%.1f초".format(analysis.elapsedMs/1000.0)}",fontSize=12.sp,color=Color.Gray,modifier=Modifier.padding(top=12.dp))
+        analysis.subjects.forEach{Text("${it.label} · 신뢰도 ${roundSafe(it.confidence*100.0)}% · 프레임 ${roundSafe(it.box.width()*it.box.height()*100.0)}%",fontSize=12.sp,color=Color.Gray)}
+        analysis.warnings.forEach{Text(it,color=MaterialTheme.colorScheme.error,fontSize=12.sp)}
+        Text("밝기 극단값은 의도된 표현일 수 있습니다. RGB 평균으로 조명색을 확정할 수 없고, 선명도 수치는 피사체·해상도에 따라 달라집니다.",fontSize=11.sp,color=Color.Gray,modifier=Modifier.padding(top=8.dp))
+    }
+}
+
 /** Compose 레이아웃에 NaN·무한값이 닿지 않도록 막대 높이를 1~44dp로 정리한다. */
 private fun nimaBarHeights(probabilities:List<Float>):List<Float> {
     if(probabilities.size!=10) return emptyList()
@@ -257,8 +290,6 @@ private fun nimaBarHeights(probabilities:List<Float>):List<Float> {
     return values.map{ if(it>0f) (it/maxP*44f).coerceIn(1f,44f) else 1f }
 }
 private fun roundSafe(v:Double):Int=if(v.isFinite())v.roundToInt() else 0
-private fun f2s(v:Double):String=if(v.isFinite())"%.2f".format(v) else "—"
-private fun safeFormat(template:String,vararg args:Any?):String=runCatching{String.format(Locale.US,template,*args)}.getOrElse{"측정값을 표시하지 못했습니다."}
 @Composable fun Histogram(values:List<Int>){
     val bars=remember(values){values.map{it.coerceAtLeast(0)}.take(256)}
     if(bars.isNotEmpty())Canvas(Modifier.fillMaxWidth().height(70.dp)){
@@ -289,8 +320,9 @@ private fun safeFormat(template:String,vararg args:Any?):String=runCatching{Stri
                 runCatching{map.getPixel(px,py)}.getOrNull()
             }else null
             detail=when{subject!=null->"${subject.label} · 신뢰도 ${roundSafe(subject.confidence*100.0)}%\n중심 (${roundSafe(subject.box.centerX()*100.0)}%, ${roundSafe(subject.box.centerY()*100.0)}%) · 프레임 ${roundSafe(subject.box.width()*subject.box.height()*100.0)}%\n${report?.sections?.get("구도").orEmpty()}\n구도 비평은 사진 전체에 대한 해석입니다."
-                clip!=null&&clip!=0->"선택 영역: ${if((clip and 0x00FF0000)!=0)"하이라이트" else "암부"} 극단값\n${report?.sections?.get("노출").orEmpty()}\n클리핑 여부만으로 결함을 확정하지 않습니다."
-                else->"${report?.sections?.get("구도")?:"선택 영역에 연결된 탐지 근거가 없습니다."}\n직선 표시는 수평선 후보이며 실제 지평선으로 확정하지 않습니다."}
+                clip!=null&&clip!=0->"선택 영역: ${if((clip and 0x00FF0000)!=0)"하이라이트" else "암부"} 극단값\n${report?.sections?.get("빛과 노출").orEmpty()}\n클리핑 여부만으로 결함을 확정하지 않습니다."
+                else->"${report?.sections?.get("구도")?:"선택 영역에 연결된 탐지 근거가 없습니다."}\n직선 표시는 수평선 후보이며 실제 지평선으로 확정하지 않습니다."
+            }
         }}){
             SafeBitmapImage(bitmap,"분석 대상 사진",Modifier.fillMaxSize())
             if(clips&&analysis!=null)analysis.metrics.clipMap?.let{SafeBitmapImage(it,"빨강: 하이라이트, 파랑: 암부",Modifier.fillMaxSize())}
@@ -312,9 +344,9 @@ private fun safeFormat(template:String,vararg args:Any?):String=runCatching{Stri
             }
         }
         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-            FilterChip(grid,{grid=!grid},label={Text("삼분할")});FilterChip(subjects,{subjects=!subjects},label={Text("피사체")});FilterChip(lines,{lines=!lines},label={Text("수평선 후보")});FilterChip(clips,{clips=!clips},label={Text("클리핑")})
+            FilterChip(grid,{grid=!grid},label={Text("삼분할",fontSize=12.sp)});FilterChip(subjects,{subjects=!subjects},label={Text("피사체",fontSize=12.sp)});FilterChip(lines,{lines=!lines},label={Text("수평선 후보",fontSize=12.sp)});FilterChip(clips,{clips=!clips},label={Text("클리핑",fontSize=12.sp)})
         }
-        if(analysis!=null)Text("표시된 영역을 터치하면 측정값과 관련 비평을 볼 수 있습니다.",fontSize=11.sp,color=Color.Gray)
+        if(analysis!=null)Text("표시된 영역을 터치하면 그 자리의 측정값과 관련 비평을 볼 수 있습니다.",fontSize=11.sp,color=Color.Gray)
         detail?.let{Text(it,fontSize=12.sp,color=Accent)}
     }
 }

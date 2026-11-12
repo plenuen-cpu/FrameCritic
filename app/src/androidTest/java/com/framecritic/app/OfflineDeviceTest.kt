@@ -38,9 +38,10 @@ class OfflineDeviceTest {
             assertEquals(Axis.entries.size,a.assessment.evidence.size)
             val r=Pipeline.report(a,Persona.LEITER,Level.BALANCED,Tone.ANALYST,Depth.QUICK)
             assertNull(r.failure)
-            assertEquals(11,r.sections.size)
+            assertEquals(CriticEngine.SECTION_TITLES.size,r.sections.size)
             assertNotNull(r.score)
             assertTrue(r.sections.values.all{it.count{ch->ch in '가'..'힣'}>=3})
+            assertTrue("본문에 수치가 남아 있습니다",r.sections.values.none{body->body.any{it.isDigit()}})
         }finally{b.recycle()}
     }
 }

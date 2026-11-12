@@ -10,15 +10,26 @@ import kotlin.math.hypot
 
 data class Analysis(val nima:NimaResult,val metrics:Metrics,val subjects:List<Subject>,val assessment:Assessment,val warnings:List<String>,val elapsedMs:Long)
 data class Report(val persona:Persona,val level:Level,val tone:Tone,val depth:Depth,val score:ScoreResult?,val sections:Map<String,String>,val failure:String?) {
+    /**
+     * 복사용 텍스트. 본문은 화면과 같은 자연스러운 비평 문장이고,
+     * 수치 근거는 맨 아래 '상세 측정 데이터'에 모아 둔다.
+     */
     fun text(analysis:Analysis):String=buildString {
-        appendLine("FrameCritic · ${persona.title} · ${level.title} · ${tone.title} · ${depth.title}")
-        appendLine("사진가의 미학에서 영감을 받은 분석이며 본인의 평가가 아닙니다.")
-        appendLine("측정 기반 오프라인 크리틱 · NIMA + OpenCV + MediaPipe")
-        appendLine("NIMA 미적 원점수: %.2f / 10 · 기술 원점수: %.2f / 10".format(analysis.nima.aesthetic,analysis.nima.technical))
-        score?.let{appendLine("Persona %.2f / 10 · Level 적용 전 %.2f".format(it.adjusted,it.base))}
+        appendLine("FrameCritic · 사진 비평")
+        score?.let{appendLine("종합 점수 %.1f / 10".format(it.adjusted))
+            appendLine(CriticEngine.verdict(analysis.assessment,it.adjusted))}
         for((k,v)in sections){appendLine();appendLine(k);appendLine(v)}
+        appendLine()
+        appendLine("── 상세 측정 데이터 및 기술적 근거 ──")
+        for(group in CriticEngine.measurements(analysis.assessment,score)){
+            appendLine("[${group.title}]")
+            group.rows.forEach{(label,value)->appendLine("$label: $value")}
+        }
+        appendLine("[항목별 관람 값]")
+        CriticEngine.evidenceLines(analysis.assessment).forEach{(title,body)->appendLine("$title: $body")}
         failure?.let{appendLine("생성 오류: $it")}
         analysis.warnings.forEach{appendLine("주의: $it")}
+        appendLine()
         appendLine("이 리포트는 기기 안의 측정값으로 계산했으며 객관적 예술 평가로 검증된 척도가 아닙니다.")
     }
 }
@@ -189,26 +200,22 @@ object Pipeline {
             else { out[title]=neutralSection(title,a,p,l,t,d);repaired=true }
         }
         if(generated.keys.any{it !in CriticEngine.SECTION_TITLES}) repaired=true
-        val failure=if(repaired) "일부 항목을 측정값만으로 간단히 채웠습니다. 관점이나 깊이를 바꾸어 다시 시도하면 온전한 문장을 볼 수 있습니다." else null
+        val failure=if(repaired) "일부 항목을 기본 문장으로 채웠습니다. 사진을 다시 분석하면 온전한 문장을 볼 수 있습니다." else null
         return out to failure
     }
 
-    private fun neutralSection(title:String,a:Analysis,p:Persona,l:Level,t:Tone,d:Depth):String {
-        val m=a.metrics
-        val tail="이번 실행에서는 이 항목의 문장을 끝까지 만들지 못해 측정된 수치만 남깁니다."
-        return when(title) {
-            "종합 크리틱"->"NIMA 미적 원점수 ${num(a.nima.aesthetic)}점, 기술 원점수 ${num(a.nima.technical)}점, 평균 휘도 ${num(m.luminance)}/255, 전역 대비 ${num(m.contrast)}로 측정되었습니다. ${p.title} 관점, 엄격도 ${l.title}, ${t.title} 어조, ${d.title} 깊이를 요청하셨습니다. $tail"
-            "관찰 사실"->"휘도 평균 ${num(m.luminance)}/255, 하이라이트 ${pct(m.highlights)}, 암부 ${pct(m.shadows)}, Laplacian 분산 ${num(m.sharpness)}, 평균 RGB ${m.rgb.joinToString("/"){num(it)}}입니다. 검출된 피사체는 ${a.subjects.size}개, 수평선 후보는 ${m.lines.size}개입니다."
-            "미적 해석"->"측정된 휘도와 대비, 색채 값을 겹쳐 보면 이 사진의 계조와 색의 관계를 읽을 수 있습니다. 다만 해석 문장을 완성하지 못했으므로 수치를 넘어선 판단은 보류합니다."
-            "주요 강점"->"값으로 확인된 부분만 적으면 평균 휘도 ${num(m.luminance)}, 대비 ${num(m.contrast)}, Laplacian 분산 ${num(m.sharpness)}입니다. 이 수치가 높을수록 계조와 디테일이 분명하게 잡혔다는 뜻입니다."
-            "개선이 필요한 부분"->"하이라이트 ${pct(m.highlights)}와 암부 ${pct(m.shadows)}, 전역 대비 ${num(m.contrast)}가 참고할 만한 값입니다. 수치만으로 촬영 의도나 결함을 확정하지는 않습니다. $tail"
-            "구도"->"검출된 피사체 ${a.subjects.size}개와 수평선 후보 ${m.lines.size}개를 근거로 삼았습니다. 피사체가 검출되지 않았다면 빈 프레임이라는 뜻은 아닙니다."
-            "노출"->"휘도 평균 ${num(m.luminance)}/255, 하이라이트 ${pct(m.highlights)}, 암부 ${pct(m.shadows)}로 측정되었습니다. 노출 판단은 이 수치를 기준으로 직접 확인하십시오."
-            "색채"->"평균 RGB ${m.rgb.joinToString("/"){num(it)}}, 평균 채도 ${pct(m.saturation)}로 측정되었습니다. 채널 평균만으로 조명색을 확정하지는 않습니다."
-            "선명도"->"Laplacian 분산 ${num(m.sharpness)}, 에지 밀도 ${pct(m.edges)}로 측정되었습니다. 피사체와 해상도에 따라 같은 값의 의미가 달라집니다."
-            "촬영 제안"->"다음 촬영에서는 수평선과 피사체 위치를 의식해 프레임을 잡아 보십시오. 노출은 하이라이트 ${pct(m.highlights)}와 암부 ${pct(m.shadows)}를 참고해 조정할 수 있습니다."
-            "보정 제안"->"보정은 측정값을 바꾸는 작업입니다. 하이라이트와 암부 수치를 확인한 뒤 최소한으로 조정하고, 바꾼 뒤의 휘도와 대비를 다시 확인하십시오."
-            else->tail
+    private fun neutralSection(title:String,a:Analysis,p:Persona,l:Level,t:Tone,d:Depth):String =
+        when(title) {
+            "종합 크리틱"->"이번에는 종합 문장을 끝까지 만들지 못했습니다. 사진 자체는 정상적으로 분석되었으니, 화면의 빛과 색, 구도를 먼저 눈으로 확인해 보십시오."
+            "빛과 노출"->"빛의 인상은 화면에서 직접 판단할 수 있습니다. 밝은 부분이 하얗게 눌렸는지, 어두운 부분이 검정으로 뭉갰는지 먼저 살펴보십시오."
+            "색채"->"색의 인상도 화면에서 바로 읽힙니다. 한 가지 색으로 기울었는지, 색이 서로를 받쳐 주는지 살펴보십시오."
+            "구도"->"화면에서 눈이 먼저 닿는 지점과 여백의 비율을 살펴보십시오. 피사체가 잡히지 않았다면 빈 프레임이라는 뜻은 아닙니다."
+            "선명도와 질감"->"윤곽이 또렷한지, 표면의 결이 살아 있는지 화면에서 직접 확인하십시오. 초점이 놓인 자리가 분명할수록 인상이 선명해집니다."
+            "분위기와 순간"->"장면의 공기가 차분한지, 움직임의 기운이 남아 있는지 눈으로 읽어 보십시오."
+            "잘 살아난 점"->"이번에는 강점 문장을 완성하지 못했습니다. 빛이 형태를 살린 지점, 색이 정리된 지점을 먼저 찾아보시면 좋겠습니다."
+            "더 다듬을 점"->"이번에는 개선 문장을 완성하지 못했습니다. 밝은 부분과 어두운 부분, 화면의 중심부터 차례로 살펴보십시오."
+            "촬영 제안"->"다음 장에서는 화면에서 눈이 머무는 자리를 하나 정하고, 그 자리에 피사체를 두고 찍어 보십시오."
+            "보정 제안"->"보정은 원본이 담고 있는 정보 안에서 마무리하십시오. 밝은 부분과 어두운 부분을 먼저 확인한 뒤 조금씩 움직여 보십시오."
+            else->"이번에는 이 항목의 문장을 완성하지 못했습니다."
         }
-    }
 }

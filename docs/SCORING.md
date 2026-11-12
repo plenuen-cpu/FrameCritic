@@ -24,12 +24,18 @@ Anchors are 0=unsupported organization, .5=coherent ordinary execution, 1=except
 | Leiter | .15 | .15 | .30 | .05 | .25 | .10 |
 | Fan Ho | .25 | .30 | .05 | .10 | .15 | .15 |
 
-Coverage = Σ weight×confidence. Otherwise V=Σ(weight×confidence×score)/coverage. Base x=.4×(rawNima−1)/9+.6×V. Adjusted=1+9×x^gamma, where Generous .75 / Balanced 1 / Strict 1.5. Anchors 1 and 10 are preserved; stricter modes demand more evidence for an intermediate high score instead of subtracting a fixed offset.
+Coverage = Σ weight×confidence. Otherwise V=Σ(weight×confidence×score)/coverage. Base x=.4×(rawNima−1)/9+.6×V. Adjusted=1+9×x^γ, where 2.1.0 uses Generous .40 / Balanced .55 / Strict .85. An exponent below 1 leaves 1.0 and 10.0 untouched and lifts the middle of the scale: on the Balanced curve a base of 5.5 reads 7.15, a base of 6.5 reads 7.86, a base of 8.5 reads 9.23. This is a deliberate, documented presentation choice — the app is meant to encourage a beginner rather than grade like a competition jury — not an empirical calibration.
+
+Because the screen no longer offers a perspective choice, analysis runs with the balanced perspective (equal emphasis on composition, light, colour and detail) and Balanced strictness. The other perspectives and levels remain in the engine, and every score is still explained by the displayed weights and the fixed evidence.
 
 These are explicitly designed heuristic weights and curves, not empirical calibration against photographers or professional judges. Observed differences are explained by displayed weights, fixed evidence and level functions. Tone and depth never enter the scoring function. Cached image evidence remains the same when switching modes.
 
 ## Text generation
 
-The Korean report is composed by a deterministic engine (`CriticEngine.kt`) from the measured facts: every section sentence is selected by score band, persona, strictness, tone and depth. It reports numbers it has, and states plainly what it cannot measure — light direction, intent, originality, emotion and the decisive moment. It never invents a subject: when the COCO detector finds nothing, the text says so instead of describing a scene.
+The Korean report is composed by a deterministic engine (`CriticEngine.kt`) from the measured facts. The first ten entries of the report — 종합 크리틱, 빛과 노출, 색채, 구도, 선명도와 질감, 분위기와 순간, 잘 살아난 점, 더 다듬을 점, 촬영 제안, 보정 제안 — contain no digits and no measurement vocabulary: no 휘도, Laplacian, COCO, NIMA or percentage figures. They describe what is visible (the balance of a frame, whether light explains form, whether colour holds together, whether texture invites a closer look) and what it means for the photograph. `CriticEngineTest.critiqueBodyCarriesNoNumbersOrMachineWords` enforces that contract across every photo sample, perspective, level, tone and depth.
+
+Every number the engine has lives in `CriticEngine.measurements()`, which feeds the fold-out **상세 측정 데이터 및 기술적 근거** block and the copied report text: NIMA raw scores and distribution, luminance statistics, clipping, contrast, RGB means, hue and saturation, Laplacian variance, edge density, detections with boxes and placement, per-axis evidence with confidence, and the scoring formula.
+
+The engine reports numbers it has and states plainly what it cannot measure — light direction, intent, originality, emotion and the decisive moment. It never invents a subject: when the COCO detector finds nothing, the text says the frame is carried by light and space rather than describing a scene that is not there.
 
 OpenCV statistics are descriptive inputs to critique, not automatic quality penalties. Deliberately black shadows, motion blur, abstraction and asymmetry may be appropriate. Mean RGB cannot identify true white balance; Hough lines are candidates, never a guaranteed horizon. Originality cannot be established from one photograph.

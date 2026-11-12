@@ -11,7 +11,7 @@ Fresh native Android application for on-device photo criticism. Kotlin / Jetpack
 3. OpenCV histogram, extreme luminance masks, RGB means, hue distribution, contrast, local contrast, Laplacian variance, Canny edge density, near-horizontal line candidates.
 4. MediaPipe EfficientDet-Lite0 object detection with position, size, confidence and surrounding frame space. Detection is limited to COCO categories; it does not recognize every possible subject.
 5. Stage 4/4 combines the NIMA distribution, OpenCV measurements and MediaPipe boxes into six evidence axes — composition, lighting, color, sharpness, emotion, timing — with a Korean observation and an interpretation for each.
-6. A deterministic on-device critic engine writes all eleven report sections from those facts and the selected persona, strictness, tone and depth. No language model, no child process, no network: analysis and report finish in a fraction of a second.
+6. A deterministic on-device critic engine writes ten critique sections from those facts — composition, light, colour, sharpness, mood, strengths, what to refine, shooting and editing advice — in plain Korean prose with no numbers or measurement vocabulary. Every raw value (NIMA distribution, luminance statistics, clipping, RGB, hue, Laplacian variance, detections, per-axis evidence, the scoring formula) is kept one tap down in **상세 측정 데이터 및 기술적 근거**. No language model, no child process, no network: analysis and report finish in a fraction of a second.
 
 Only the three TFLite models (~17MB) are prepared on first launch. The GGUF vision/language weights stay in the repository manifest for the Linux host verification job but are not loaded, unpacked or packaged into the APK, so the app no longer spends minutes extracting 1.8GB or risks the OS killing a native inference process.
 
@@ -19,7 +19,7 @@ Scores are heuristic aesthetic judgments of measured image properties, not valid
 
 ## Features
 
-Four photographer-inspired weighted perspectives, independent three-level strictness / three tones / three report depths; dark photo-first UI; raw NIMA distribution; scores for all perspectives and levels; grid, detection boxes, candidate horizon lines, clipping masks; tap regions for measurements and related whole-image critique; text copy and report-image sharing; cancellation and explicit partial failure states. Model/legal information is included in assets.
+One-touch flow: pick a photo, press **사진 분석하기**, read the score and the critique. No perspective, strictness, tone or depth selection on screen — the app runs with a balanced point of view and a mentor tone. The score card shows a single number and a one-line impression; the critique follows as cards; the measurement appendix, NIMA distribution and luminance histogram sit in a fold-out block at the bottom. The overlay chips (삼분할 · 피사체 · 수평선 후보 · 클리핑) and tap-to-inspect regions stay for reading a photo already on screen. Text copy, report-image sharing, cancellation and explicit partial failure states are unchanged. Model/legal information is included in assets.
 
 ## Build through GitHub Actions
 

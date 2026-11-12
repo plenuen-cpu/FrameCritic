@@ -14,7 +14,7 @@ import java.io.File
 
 data class ScreenState(val bitmap:Bitmap?=null,val analysis:Analysis?=null,val report:Report?=null,
     val busy:Boolean=false,val progress:String="",val error:String?=null,
-    val persona:Persona=Persona.BRESSON,val level:Level=Level.BALANCED,val tone:Tone=Tone.MENTOR,val depth:Depth=Depth.STANDARD)
+    val persona:Persona=Persona.BALANCED,val level:Level=Level.BALANCED,val tone:Tone=Tone.MENTOR,val depth:Depth=Depth.STANDARD)
 class CriticViewModel(app:Application):AndroidViewModel(app) {
     private val mutable=MutableStateFlow(ScreenState());val state=mutable.asStateFlow()
     private var job:Job?=null;private var folder:File?=null
