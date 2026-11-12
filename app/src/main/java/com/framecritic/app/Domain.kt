@@ -20,7 +20,12 @@ enum class Tone(val title: String, val instruction: String) {
     CRITIC("Critic", "직설적인 미학 비평. 인신공격 없이 사진의 표현을 논할 것."),
     ANALYST("Analyst", "측정값과 추론을 구분하고 객관적·기술적으로 설명할 것.")
 }
-enum class Depth(val title: String, val sentences: Int) { QUICK("Quick", 2), STANDARD("Standard", 3), EXPERT("Expert", 5) }
+/**
+ * 비평 깊이. sentences는 항목 하나에 담는 문장 수다.
+ * 2.2.0부터는 짧은 요약 대신 사진 평론의 호흡으로 길게 쓴다.
+ * STANDARD(기본값)는 다섯에서 일곱 문장, EXPERT는 여덟에서 열 문장을 담는다.
+ */
+enum class Depth(val title: String, val sentences: Int) { QUICK("Quick", 4), STANDARD("Standard", 6), EXPERT("Expert", 9) }
 
 /** Six axes the measurement engine can actually support with OpenCV, NIMA and MediaPipe output. */
 enum class Axis(val title: String, val basis: String) {

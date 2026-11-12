@@ -1,6 +1,6 @@
-# FrameCritic 2.0
+# FrameCritic 2.2
 
-Fresh native Android application for on-device photo criticism. Kotlin / Jetpack Compose / Material 3. Korean interface. Samsung Galaxy S25 Ultra (ARM64, Android 9+) target.
+Native Android application and browser app for on-device photo criticism. Kotlin / Jetpack Compose / Material 3. Korean interface. Samsung Galaxy S25 Ultra (ARM64, Android 9+) target.
 
 **Download the APK and the complete Android Studio source with weights from the newest `offline-v2-*` prerelease.** GitHub's automatic Source code archive excludes large weights; use `FrameCritic-2.0.0-source-with-models.zip` for the self-contained source deliverable.
 
@@ -20,6 +20,39 @@ Scores are heuristic aesthetic judgments of measured image properties, not valid
 ## Features
 
 One-touch flow: pick a photo, press **사진 분석하기**, read the score and the critique. No perspective, strictness, tone or depth selection on screen — the app runs with a balanced point of view and a mentor tone. The score card shows a single number and a one-line impression; the critique follows as cards; the measurement appendix, NIMA distribution and luminance histogram sit in a fold-out block at the bottom. The overlay chips (삼분할 · 피사체 · 수평선 후보 · 클리핑) and tap-to-inspect regions stay for reading a photo already on screen. Text copy, report-image sharing, cancellation and explicit partial failure states are unchanged. Model/legal information is included in assets.
+
+## Web app (`web/`)
+
+The same critic engine, running entirely in the browser: no server, no upload, no account. Drop a
+photo, press **사진 분석하기**, and the score plus ten critique sections appear; the raw measurements
+sit in a fold-out block at the bottom.
+
+- **Stack:** Vite + React + TypeScript + Tailwind CSS, static output in `web/dist`.
+- **Measurement:** HTML5 Canvas reads the pixels directly — 256-bin luminance histogram, mean
+  luminance, highlight/shadow clipping, global contrast (standard deviation), local contrast
+  (mean of 32px block standard deviations), Laplacian variance, Sobel edge density, mean RGB,
+  channel spread, 12-bin hue histogram, mean saturation, near-horizontal line candidates
+  (angle-projected accumulation) and a salience region from block contrast and edge density.
+- **Engine:** `web/src/lib/critic-engine.ts` is a line-for-line port of the Kotlin engine. It was
+  verified against 4,050 Kotlin outputs (5 measurement sets × 3 subject sets × 2 NIMA results ×
+  every persona · level · tone · depth combination); section text and scores matched exactly.
+- **Honesty:** the browser has no NIMA or object-detection weights, so the aesthetic score and the
+  "주요 영역" box are heuristics computed from the measurements. The UI and the copied report say
+  "추정" and never present them as neural-network output.
+- **Check:** `npm run build` runs `tsc --noEmit` and the production build; `node scripts/contract-check.cjs`
+  replays 5,400 generated sections and fails on any digit or measurement word in the critique body.
+
+```bash
+cd web
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # type check + static build
+```
+
+Deployment to Vercel (import, root directory, build settings, CLI, troubleshooting) is in
+[docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md). The repository ships both `vercel.json`
+files, so importing the repo with the root directory set to `web` — or leaving it at the repository
+root — builds without further configuration.
 
 ## Build through GitHub Actions
 

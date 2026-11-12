@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    background-color: #121312;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-viewfinder text-ink antialiased;
+    font-feature-settings: 'tnum' 0;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  ::selection {
+    background-color: rgba(196, 218, 168, 0.28);
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-hairline bg-panel;
+  }
+
+  .ghost-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-hairline px-4 py-2 text-sm text-ink transition-colors hover:border-sage hover:text-sage disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .primary-button {
+    @apply inline-flex w-full items-center justify-center rounded-xl bg-sage px-6 py-4 text-base font-semibold text-viewfinder transition-transform active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-hairline disabled:text-muted;
+  }
+}
+
+/* 비평 본문의 문단 사이 여백. 문단은 엔진이 빈 줄로 나눠 보낸다. */
+.critique-body {
+  white-space: pre-line;
+}

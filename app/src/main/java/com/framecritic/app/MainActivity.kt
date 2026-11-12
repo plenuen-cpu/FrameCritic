@@ -61,13 +61,13 @@ private val CardBg=Color(0xFF1A1C1A)
 private val Hairline=Color(0xFF2A2C2A)
 
 /** 로컬 빌드에서 쓸 기본 빌드 번호. CI 빌드는 릴리스 태그와 같은 런 번호를 쓴다. */
-const val BUILD_NUMBER=65
+const val BUILD_NUMBER=66
 
 /** 화면과 오류 기록에 쓰는 버전 표기. 릴리스 태그(offline-v2-N)의 N과 같은 번호를 보여준다. */
 fun appVersion(context:Context):String {
     val info=runCatching{context.packageManager.getPackageInfo(context.packageName,0)}.getOrNull()
     val build=if(BuildConfig.CI_RUN_NUMBER>0) BuildConfig.CI_RUN_NUMBER else BUILD_NUMBER
-    return "v${info?.versionName?:"2.1.0"} (Build $build)"
+    return "v${info?.versionName?:"2.2.0"} (Build $build)"
 }
 
 /** 전역 비정상 종료 로거. 스택 트레이스를 파일에 남기고 다음 실행에서 보여준 뒤 지운다. */
