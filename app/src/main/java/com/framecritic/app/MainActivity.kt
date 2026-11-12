@@ -42,15 +42,74 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 private val Ink=Color(0xFFECECE7)
 private val Accent=Color(0xFFC4DAA8)
-class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{
-    MaterialTheme(colorScheme=darkColorScheme(primary=Accent,background=Color(0xFF101110),surface=Color(0xFF1C1E1C),onSurface=Ink,onBackground=Ink)){
-        Surface(Modifier.fillMaxSize()){CriticScreen()}
+
+/** 전역 비정상 종료 로거. 스택 트레이스를 파일에 남기고 다음 실행에서 보여준 뒤 지운다. */
+object CrashLog {
+    private const val NAME="crash.txt"
+    private const val LIMIT=200_000
+    private fun file(context:Context)=File(context.filesDir,NAME)
+    fun install(context:Context){
+        val app=context.applicationContext
+        val previous=Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler{thread,error->
+            runCatching{file(app).writeText(describe(app,thread,error))}
+            if(previous!=null)previous.uncaughtException(thread,error)
+            else{android.os.Process.killProcess(android.os.Process.myPid());kotlin.system.exitProcess(10)}
+        }
     }
-}}}
+    fun read(context:Context):String?=runCatching{
+        val stored=file(context)
+        if(!stored.exists()||stored.length()==0L)null else stored.readText().take(LIMIT).trim().ifBlank{null}
+    }.getOrNull()
+    fun clear(context:Context){runCatching{file(context).delete()}}
+    private fun describe(context:Context,thread:Thread,error:Throwable):String {
+        val text=buildString{
+            appendLine("FrameCritic 비정상 종료 기록")
+            appendLine("시각 ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US).format(Date())}")
+            appendLine("스레드 ${thread.name}")
+            appendLine("기기 Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT}) · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+            val info=runCatching{context.packageManager.getPackageInfo(context.packageName,0)}.getOrNull()
+            appendLine("앱 ${info?.versionName.orEmpty()} (${info?.longVersionCode?:0L})")
+            appendLine("메모리 한도 ${Runtime.getRuntime().maxMemory()/1024/1024}MB")
+            appendLine()
+            val trace=StringWriter()
+            PrintWriter(trace).use{error.printStackTrace(it)}
+            append(trace.toString())
+        }
+        return text.take(LIMIT)
+    }
+}
+class MainActivity:ComponentActivity(){
+    override fun onCreate(savedInstanceState:Bundle?){
+        super.onCreate(savedInstanceState)
+        CrashLog.install(this)
+        val previousCrash=CrashLog.read(this)
+        setContent{
+            var crash by remember{mutableStateOf(previousCrash)}
+            MaterialTheme(colorScheme=darkColorScheme(primary=Accent,background=Color(0xFF101110),surface=Color(0xFF1C1E1C),onSurface=Ink,onBackground=Ink)){
+                Surface(Modifier.fillMaxSize()){CriticScreen()}
+            }
+            crash?.let{record->CrashDialog(record){CrashLog.clear(this);crash=null}}
+        }
+    }
+}
+@Composable fun CrashDialog(record:String,onClose:()->Unit){
+    AlertDialog(onDismissRequest=onClose,title={Text("이전 실행에서 앱이 종료되었습니다")},
+        text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())){
+            Text("아래 기록을 복사해 보내주시면 종료 원인을 바로 확인할 수 있습니다.",fontSize=12.sp,color=Color.Gray)
+            Text(record,fontSize=11.sp)
+        }},
+        confirmButton={TextButton(onClick=onClose){Text("닫기")}})
+}
 @Composable fun <T> Choice(title:String,items:List<T>,selected:T,label:(T)->String,enabled:Boolean,onSelect:(T)->Unit){
     Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
         Text(title,color=Color.Gray,fontSize=12.sp)
@@ -103,41 +162,44 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
                 ScoreTile("NIMA 미적 원점수",a.nima.aesthetic)
                 ScoreTile("Persona · ${s.level.title}",s.report?.score?.adjusted)
             }
-            Text("기술 원점수 %.2f / 10 · NIMA 분포 표준편차 %.2f".format(a.nima.technical,a.nima.deviation),fontSize=12.sp,color=Color.Gray)
+            Text(safeFormat("기술 원점수 %.2f / 10 · NIMA 분포 표준편차 %.2f",a.nima.technical,a.nima.deviation),fontSize=12.sp,color=Color.Gray)
             Text("NIMA 1–10점 확률분포",fontSize=12.sp)
-            Row(Modifier.fillMaxWidth().height(62.dp),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.Bottom){
-                a.nima.probabilities.forEachIndexed{i,v->Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally){Box(Modifier.fillMaxWidth().height((v/(a.nima.probabilities.maxOrNull()?:1f)*44).coerceAtLeast(1f).dp).background(Accent));Text("${i+1}",fontSize=10.sp,color=Color.Gray)}}
-            }
+            val heights=remember(a.nima.probabilities){nimaBarHeights(a.nima.probabilities)}
+            if(heights.size==10){
+                Row(Modifier.fillMaxWidth().height(62.dp),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.Bottom){
+                    heights.forEachIndexed{i,h->Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally){Box(Modifier.fillMaxWidth().height(h.dp).background(Accent));Text("${i+1}",fontSize=10.sp,color=Color.Gray)}}
+                }
+            }else Text("확률분포를 그리지 못했습니다. 사진을 다시 선택해 주세요.",fontSize=12.sp,color=MaterialTheme.colorScheme.error)
             s.report?.let{report->
                 report.score?.let{score->
                     Text("점수 산정",fontWeight=FontWeight.Medium)
                     Text("NIMA 40% + 사진가 관점 60%. 사진가 관점은 항목 가중치 × 측정 근거 신뢰도로 정규화합니다.\n엄격도 보정: 1 + 9 × x^γ (x는 0~1 기본점수, γ는 Generous 0.75 / Balanced 1 / Strict 1.5).",fontSize=12.sp,color=Color.Gray)
-                    Text("관점 점수 %.2f · 보정 전 %.2f → %.2f\n가중 신뢰도 %.0f%% · 경험적 평가 함수이며 인간 심사위원 점수로 검증된 척도가 아닙니다.".format(score.weighted,score.base,score.adjusted,score.coverage*100),fontSize=12.sp)
+                    Text(safeFormat("관점 점수 %.2f · 보정 전 %.2f → %.2f\n가중 신뢰도 %.0f%% · 경험적 평가 함수이며 인간 심사위원 점수로 검증된 척도가 아닙니다.",score.weighted,score.base,score.adjusted,score.coverage*100),fontSize=12.sp)
                     a.assessment.let{scene->
-                        val important=score.contributions.indices.sortedByDescending{score.contributions[it]}.take(3)
+                        val important=score.contributions.indices.filter{it in Axis.entries.indices}.sortedByDescending{score.contributions[it]}.take(3)
                         Text("이 관점의 점수에 크게 기여한 항목: "+important.joinToString{Axis.entries[it].title}+". 다른 관점은 같은 사진 근거에 다른 가중치를 적용합니다.",fontSize=12.sp)
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(16.dp)){
                             Level.entries.forEach{l->val scoreText=runCatching{"%.2f".format(Scoring.evaluate(a.nima.aesthetic,scene.evidence,report.persona,l).adjusted)}.getOrElse{"—"};Text("${l.title} $scoreText",fontSize=12.sp)}
                         }
                         Persona.entries.forEach{p->val other=runCatching{Scoring.evaluate(a.nima.aesthetic,scene.evidence,p,report.level)}.getOrNull();Text("${p.title}: ${other?.adjusted?.let{"%.2f".format(it)}?:"신뢰도 부족"}",fontSize=12.sp,color=Color.Gray)}
                         Axis.entries.forEachIndexed{i,axis->
-                            Text("${axis.title} · 가중치 ${(report.persona.weights[i]*100).roundToInt()}% · 근거 ${"%.2f".format(scene.evidence[i].score)} · 신뢰도 ${(scene.evidence[i].confidence*100).roundToInt()}%",fontSize=11.sp,color=Color.Gray)
+                            Text("${axis.title} · 가중치 ${roundSafe(report.persona.weights[i]*100.0)}% · 근거 ${f2s(scene.evidence[i].score)} · 신뢰도 ${roundSafe(scene.evidence[i].confidence*100.0)}%",fontSize=11.sp,color=Color.Gray)
                         }
                     }
                 }
                 report.failure?.let{Text(it,color=MaterialTheme.colorScheme.error)}
                 report.sections.forEach{(heading,body)->Text(heading,fontSize=17.sp,fontWeight=FontWeight.Medium);Text(body,fontSize=14.sp,lineHeight=23.sp)}
                 if(report.sections.isNotEmpty())Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                    OutlinedButton(onClick={val cm=context.getSystemService(Context.CLIPBOARD_SERVICE)as ClipboardManager;cm.setPrimaryClip(ClipData.newPlainText("FrameCritic",report.text(a)));Toast.makeText(context,"리포트를 복사했습니다",Toast.LENGTH_SHORT).show()}){Text("텍스트 복사")}
-                    OutlinedButton(enabled=!sharing,onClick={sharing=true;scope.launch{try{val file=withContext(Dispatchers.IO){renderShare(context,s.bitmap!!,report.text(a))};val uri=FileProvider.getUriForFile(context,"${context.packageName}.files",file);context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="image/png";putExtra(Intent.EXTRA_STREAM,uri);clipData=ClipData.newRawUri("FrameCritic",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"리포트 공유"))}catch(e:OutOfMemoryError){Toast.makeText(context,"공유 이미지를 만들 메모리가 부족합니다.",Toast.LENGTH_LONG).show()}catch(e:Exception){Toast.makeText(context,e.message,Toast.LENGTH_LONG).show()}finally{sharing=false}}}){Text(if(sharing)"만드는 중" else "이미지 공유")}
+                    OutlinedButton(onClick={val cm=context.getSystemService(Context.CLIPBOARD_SERVICE)as ClipboardManager;val copy=runCatching{report.text(a)}.getOrElse{"리포트 텍스트를 만들지 못했습니다."};cm.setPrimaryClip(ClipData.newPlainText("FrameCritic",copy));Toast.makeText(context,"리포트를 복사했습니다",Toast.LENGTH_SHORT).show()}){Text("텍스트 복사")}
+                    OutlinedButton(enabled=!sharing,onClick={sharing=true;scope.launch{try{val file=withContext(Dispatchers.IO){renderShare(context,s.bitmap!!,runCatching{report.text(a)}.getOrElse{"리포트 텍스트를 만들지 못했습니다."})};val uri=FileProvider.getUriForFile(context,"${context.packageName}.files",file);context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="image/png";putExtra(Intent.EXTRA_STREAM,uri);clipData=ClipData.newRawUri("FrameCritic",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"리포트 공유"))}catch(e:OutOfMemoryError){Toast.makeText(context,"공유 이미지를 만들 메모리가 부족합니다.",Toast.LENGTH_LONG).show()}catch(e:Throwable){Toast.makeText(context,e.message,Toast.LENGTH_LONG).show()}finally{sharing=false}}}){Text(if(sharing)"만드는 중" else "이미지 공유")}
                 }
             }
             Text("측정 결과 · OpenCV",fontSize=17.sp,fontWeight=FontWeight.Medium)
-            Text("휘도 %.1f/255 · 하이라이트 %.2f%% · 암부 %.2f%%\n전역 대비 %.2f · 국소 대비 %.2f · Laplacian 분산 %.2f\n평균 RGB %s".format(a.metrics.luminance,a.metrics.highlights*100,a.metrics.shadows*100,a.metrics.contrast,a.metrics.localContrast,a.metrics.sharpness,a.metrics.rgb.joinToString{"%.1f".format(it)}),fontSize=13.sp,lineHeight=21.sp)
+            Text(safeFormat("휘도 %.1f/255 · 하이라이트 %.2f%% · 암부 %.2f%%\n전역 대비 %.2f · 국소 대비 %.2f · Laplacian 분산 %.2f\n평균 RGB %s",a.metrics.luminance,a.metrics.highlights*100,a.metrics.shadows*100,a.metrics.contrast,a.metrics.localContrast,a.metrics.sharpness,a.metrics.rgb.joinToString{"%.1f".format(it)}),fontSize=13.sp,lineHeight=21.sp)
             Histogram(a.metrics.histogram)
             Text("밝기 극단값은 의도된 표현일 수 있습니다. RGB 평균으로 조명색을 확정할 수 없고, 선명도 수치는 피사체·해상도에 따라 달라집니다.",fontSize=11.sp,color=Color.Gray)
             Text("MediaPipe 탐지 ${a.subjects.size}개 · 분석 ${if(a.elapsedMs<1000) "${a.elapsedMs}ms" else "%.1f초".format(a.elapsedMs/1000.0)}",fontSize=12.sp,color=Color.Gray)
-            a.subjects.forEach{Text("${it.label} · 신뢰도 ${(it.confidence*100).roundToInt()}% · 프레임 ${(it.box.width()*it.box.height()*100).roundToInt()}%",fontSize=12.sp)}
+            a.subjects.forEach{Text("${it.label} · 신뢰도 ${roundSafe(it.confidence*100.0)}% · 프레임 ${roundSafe(it.box.width()*it.box.height()*100.0)}%",fontSize=12.sp)}
             a.warnings.forEach{Text(it,color=MaterialTheme.colorScheme.error,fontSize=12.sp)}
             a.assessment.let{assessment->
                 var expanded by remember(assessment){mutableStateOf(false)}
@@ -153,25 +215,63 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
         Text(notices,fontSize=11.sp)
     }})
 }
-@Composable fun ScoreTile(label:String,score:Double?){Column{Text(label,fontSize=11.sp,color=Color.Gray);Text(score?.let{"%.2f".format(it)}?:"—",fontSize=35.sp,fontWeight=FontWeight.Light);Text("/ 10",fontSize=10.sp,color=Color.Gray)}}
-@Composable fun Histogram(values:List<Int>){Canvas(Modifier.fillMaxWidth().height(70.dp)){val max=values.maxOrNull()?.coerceAtLeast(1)?:1;values.forEachIndexed{i,n->val x=i*size.width/256;drawLine(Color.Gray,Offset(x,size.height),Offset(x,size.height-size.height*n/max),size.width/256)}}}
+@Composable fun ScoreTile(label:String,score:Double?){Column{Text(label,fontSize=11.sp,color=Color.Gray);Text(score?.takeIf{it.isFinite()}?.let{"%.2f".format(it)}?:"—",fontSize=35.sp,fontWeight=FontWeight.Light);Text("/ 10",fontSize=10.sp,color=Color.Gray)}}
+/** Compose 레이아웃에 NaN·무한값이 닿지 않도록 막대 높이를 1~44dp로 정리한다. */
+private fun nimaBarHeights(probabilities:List<Float>):List<Float> {
+    if(probabilities.size!=10) return emptyList()
+    val values=probabilities.map{ if(it.isFinite()&&it>0f) it else 0f }
+    val maxP=values.maxOrNull()?.takeIf{it>0f}?:1f
+    return values.map{ if(it>0f) (it/maxP*44f).coerceIn(1f,44f) else 1f }
+}
+private fun roundSafe(v:Double):Int=if(v.isFinite())v.roundToInt() else 0
+private fun f2s(v:Double):String=if(v.isFinite())"%.2f".format(v) else "—"
+private fun safeFormat(template:String,vararg args:Any?):String=runCatching{String.format(Locale.US,template,*args)}.getOrElse{"측정값을 표시하지 못했습니다."}
+@Composable fun Histogram(values:List<Int>){
+    val bars=remember(values){values.map{it.coerceAtLeast(0)}.take(256)}
+    if(bars.isNotEmpty())Canvas(Modifier.fillMaxWidth().height(70.dp)){
+        runCatching{
+            if(!size.width.isFinite()||!size.height.isFinite()||size.width<=0f||size.height<=0f) return@runCatching
+            val max=bars.maxOrNull()?.coerceAtLeast(1)?:1
+            val step=size.width/256f
+            val strokeW=step.coerceAtLeast(1f)
+            bars.forEachIndexed{i,n->
+                val x=i*step
+                if(!x.isFinite()) return@runCatching
+                drawLine(Color.Gray,Offset(x,size.height),Offset(x,size.height-size.height*n/max),strokeW)
+            }
+        }
+    }
+}
 @Composable fun PhotoAnalysis(bitmap:Bitmap,analysis:Analysis?,report:Report?){
     var grid by remember{mutableStateOf(false)};var subjects by remember{mutableStateOf(true)};var lines by remember{mutableStateOf(false)};var clips by remember{mutableStateOf(false)};var detail by remember(bitmap){mutableStateOf<String?>(null)}
     Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
-        Box(Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat()/bitmap.height).pointerInput(bitmap,analysis,report,clips,subjects,lines){detectTapGestures{pos->
-            val x=(pos.x/size.width).coerceIn(0f,1f);val y=(pos.y/size.height).coerceIn(0f,1f)
+        val ratio=(if(bitmap.height>0)bitmap.width.toFloat()/bitmap.height else 1f).let{if(it.isFinite()&&it>0f)it.coerceIn(0.01f,100f) else 1f}
+        Box(Modifier.fillMaxWidth().aspectRatio(ratio).pointerInput(bitmap,analysis,report,clips,subjects,lines){detectTapGestures{pos->
+            val x=(if(size.width>0f)pos.x/size.width else 0f).let{if(it.isFinite())it.coerceIn(0f,1f) else 0f}
+            val y=(if(size.height>0f)pos.y/size.height else 0f).let{if(it.isFinite())it.coerceIn(0f,1f) else 0f}
             val subject=if(subjects)analysis?.subjects?.firstOrNull{it.box.contains(x,y)}else null
             val clip=if(clips)analysis?.metrics?.clipMap?.getPixel((x*(bitmap.width-1)).toInt(),(y*(bitmap.height-1)).toInt())else null
-            detail=when{subject!=null->"${subject.label} · 신뢰도 ${(subject.confidence*100).roundToInt()}%\n중심 (${(subject.box.centerX()*100).roundToInt()}%, ${(subject.box.centerY()*100).roundToInt()}%) · 프레임 ${(subject.box.width()*subject.box.height()*100).roundToInt()}%\n${report?.sections?.get("구도").orEmpty()}\n구도 비평은 사진 전체에 대한 해석입니다."
+            detail=when{subject!=null->"${subject.label} · 신뢰도 ${roundSafe(subject.confidence*100.0)}%\n중심 (${roundSafe(subject.box.centerX()*100.0)}%, ${roundSafe(subject.box.centerY()*100.0)}%) · 프레임 ${roundSafe(subject.box.width()*subject.box.height()*100.0)}%\n${report?.sections?.get("구도").orEmpty()}\n구도 비평은 사진 전체에 대한 해석입니다."
                 clip!=null&&clip!=0->"선택 영역: ${if((clip and 0x00FF0000)!=0)"하이라이트" else "암부"} 극단값\n${report?.sections?.get("노출").orEmpty()}\n클리핑 여부만으로 결함을 확정하지 않습니다."
                 else->"${report?.sections?.get("구도")?:"선택 영역에 연결된 탐지 근거가 없습니다."}\n직선 표시는 수평선 후보이며 실제 지평선으로 확정하지 않습니다."}
         }}){
             Image(bitmap.asImageBitmap(),contentDescription="분석 대상 사진",modifier=Modifier.fillMaxSize(),contentScale=ContentScale.FillBounds)
             if(clips&&analysis!=null)Image(analysis.metrics.clipMap.asImageBitmap(),contentDescription="빨강: 하이라이트, 파랑: 암부",modifier=Modifier.fillMaxSize(),contentScale=ContentScale.FillBounds)
             Canvas(Modifier.matchParentSize()){
-                if(grid)for(i in 1..2){drawLine(Color.White.copy(alpha=.5f),Offset(size.width*i/3,0f),Offset(size.width*i/3,size.height));drawLine(Color.White.copy(alpha=.5f),Offset(0f,size.height*i/3),Offset(size.width,size.height*i/3))}
-                if(subjects)analysis?.subjects?.forEach{s->drawRect(Accent,Offset(s.box.left*size.width,s.box.top*size.height),Size(s.box.width()*size.width,s.box.height()*size.height),style=Stroke(2.dp.toPx()))}
-                if(lines)analysis?.metrics?.lines?.forEach{drawLine(Color.Yellow,Offset(it.x1*size.width,it.y1*size.height),Offset(it.x2*size.width,it.y2*size.height),2.dp.toPx())}
+                runCatching{
+                    if(!size.width.isFinite()||!size.height.isFinite()||size.width<=0f||size.height<=0f) return@runCatching
+                    val strokeW=2.dp.toPx().coerceAtLeast(0.5f)
+                    if(grid)for(i in 1..2){drawLine(Color.White.copy(alpha=.5f),Offset(size.width*i/3,0f),Offset(size.width*i/3,size.height),1f);drawLine(Color.White.copy(alpha=.5f),Offset(0f,size.height*i/3),Offset(size.width,size.height*i/3),1f)}
+                    if(subjects)analysis?.subjects?.forEach{s->
+                        val left=s.box.left;val top=s.box.top;val right=s.box.right;val bottom=s.box.bottom
+                        if(left.isFinite()&&top.isFinite()&&right.isFinite()&&bottom.isFinite()&&right>left&&bottom>top)
+                            drawRect(Accent,Offset(left*size.width,top*size.height),Size((right-left)*size.width,(bottom-top)*size.height),style=Stroke(strokeW))
+                    }
+                    if(lines)analysis?.metrics?.lines?.forEach{line->
+                        if(line.x1.isFinite()&&line.y1.isFinite()&&line.x2.isFinite()&&line.y2.isFinite())
+                            drawLine(Color.Yellow,Offset(line.x1*size.width,line.y1*size.height),Offset(line.x2*size.width,line.y2*size.height),strokeW)
+                    }
+                }
             }
         }
         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){

@@ -34,7 +34,7 @@ class CriticViewModel(app:Application):AndroidViewModel(app) {
                     decoder.setTargetColorSpace(android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB))
                 }.let{if(it.config==Bitmap.Config.ARGB_8888)it else it.copy(Bitmap.Config.ARGB_8888,false)}
                 mutable.update{it.copy(bitmap=image,analysis=null,report=null)}
-            }catch(e:CancellationException){throw e}catch(e:OutOfMemoryError){mutable.update{it.copy(error="사진을 열 메모리가 부족합니다.")}}catch(e:Exception){mutable.update{it.copy(error=e.message)}}finally{mutable.update{it.copy(busy=false,progress="")}}
+            }catch(e:CancellationException){throw e}catch(e:OutOfMemoryError){mutable.update{it.copy(error="사진을 열 메모리가 부족합니다.")}}catch(e:Throwable){mutable.update{it.copy(error=e.message?:"사진을 열지 못했습니다.")}}finally{mutable.update{it.copy(busy=false,progress="")}}
         }
     }
     fun analyze() {
@@ -46,14 +46,15 @@ class CriticViewModel(app:Application):AndroidViewModel(app) {
                 val a=selected.analysis?:run{
                     progress("내장 모델 확인")
                     val models=folder?:ModelStore.prepare(context,::progress).also{folder=it}
-                    Pipeline.analyze(context,models,selected.bitmap,::progress).also{result->mutable.update{it.copy(analysis=result)}}
+                    Pipeline.analyze(context,models,selected.bitmap,::progress)
                 }
                 progress("측정 근거로 비평 작성")
                 val report=Pipeline.report(a,selected.persona,selected.level,selected.tone,selected.depth)
-                mutable.update{it.copy(report=report)}
+                // 분석과 리포트를 한 번에 반영한다. 둘 사이의 반쪽 상태로 화면이 그려지던 경로를 없앤다.
+                mutable.update{it.copy(analysis=a,report=report)}
             }catch(e:CancellationException){mutable.update{it.copy(error="분석을 취소했습니다.")};throw e}
             catch(e:OutOfMemoryError){mutable.update{it.copy(error="메모리가 부족합니다. 다른 앱을 닫고 다시 시도하세요.")}}
-            catch(e:Exception){mutable.update{it.copy(error=e.message?:"분석 실패")}}
+            catch(e:Throwable){mutable.update{it.copy(error=e.message?:"분석 실패")}}
             finally{mutable.update{it.copy(busy=false,progress="")}}
         }
     }

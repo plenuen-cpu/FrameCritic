@@ -122,6 +122,7 @@ object CriticEngine {
         return text+(if(last in "013678") "으로" else "로")
     }
     private fun clamp01(v:Double)=v.coerceIn(0.0,1.0)
+    private fun finite(v:Double,fallback:Double)=if(v.isFinite())v else fallback
     private fun ramp(v:Double,low:Double,high:Double)=if(high<=low) 0.0 else clamp01((v-low)/(high-low))
     private fun band(score:Double)=when{score>=.72->2;score>=.45->1;else->0}
     private fun nearestThirds(cx:Double,cy:Double):Double {
@@ -134,21 +135,49 @@ object CriticEngine {
     }
 
     // ---------- assessment ----------
+    /** 한 항목의 계산이 실패해도 다른 항목의 근거는 남기고, 그 항목만 중립값으로 둔다. */
+    private fun neutralAx()=Ax(.5,CONFIDENCE_FLOOR,"이 항목의 측정값을 읽지 못했습니다.","측정값 해석에 실패해 중립값으로 처리했습니다.")
+
     fun assess(nima:NimaResult,measure:Measure,subjects:List<SubjectBox>):Assessment {
-        val sorted=subjects.sortedByDescending{it.area}
-        val axes=listOf(
-            composition(measure,sorted),
-            lighting(measure),
-            color(measure),
-            sharpness(measure),
-            emotion(nima,measure,sorted),
-            timing(measure,sorted)
+        val sorted=subjects
+            .filter{it.confidence.isFinite()&&it.cx.isFinite()&&it.cy.isFinite()&&it.w.isFinite()&&it.h.isFinite()}
+            .sortedByDescending{it.area}
+        val builders=listOf<()->Ax>(
+            {composition(measure,sorted)},
+            {lighting(measure)},
+            {color(measure)},
+            {sharpness(measure)},
+            {emotion(nima,measure,sorted)},
+            {timing(measure,sorted)}
         )
+        val axes=builders.map{build->runCatching(build).getOrElse{neutralAx()}}
         val evidence=axes.mapIndexed{i,ax->
-            Evidence(clamp01(ax.score).coerceIn(.05,.95),clamp01(ax.confidence).coerceAtLeast(CONFIDENCE_FLOOR),ax.observation,ax.interpretation)
+            val title=Axis.entries.getOrElse(i){Axis.entries.last()}.title
+            Evidence(
+                finite(ax.score,.5).coerceIn(.05,.95),
+                finite(ax.confidence,CONFIDENCE_FLOOR).coerceIn(CONFIDENCE_FLOOR,1.0),
+                ax.observation.ifBlank{"$title 항목의 관찰 문장을 만들지 못했습니다."},
+                ax.interpretation.ifBlank{"측정값 해석에 실패해 중립값으로 처리했습니다."}
+            )
         }
-        val observations=Axis.entries.associate{it.name to evidence[it.ordinal].observation}
-        return Assessment(nima,measure,sorted,evidence,observations,describe(measure,sorted,evidence))
+        val observations=Axis.entries.mapIndexed{i,axis->
+            axis.name to (evidence.getOrNull(i)?.observation?:"${axis.title} 항목의 관찰을 만들지 못했습니다.")
+        }.toMap()
+        val description=runCatching{describe(measure,sorted,evidence)}
+            .getOrElse{"측정값을 문장으로 정리하지 못했습니다. 아래 항목별 관찰을 참고하십시오."}
+        return Assessment(nima,measure,sorted,evidence,observations,description)
+    }
+
+    /** 어떤 입력이나 내부 오류에도 앱을 종료시키지 않고 Assessment를 돌려준다. */
+    fun safeAssess(nima:NimaResult,measure:Measure,subjects:List<SubjectBox>):Assessment=
+        runCatching{assess(nima,measure,subjects)}.getOrElse{neutralAssessment(nima,measure,subjects)}
+
+    private fun neutralAssessment(nima:NimaResult,measure:Measure,subjects:List<SubjectBox>):Assessment {
+        val evidence=Axis.entries.map{axis->
+            Evidence(.5,CONFIDENCE_FLOOR,"${axis.title} 항목의 측정값을 정리하지 못했습니다.","측정값 해석에 실패해 중립값으로 처리했습니다. 관점이나 깊이를 바꾸어 다시 시도해 주십시오.")
+        }
+        val observations=Axis.entries.mapIndexed{i,axis->axis.name to evidence[i].observation}.toMap()
+        return Assessment(nima,measure,subjects,evidence,observations,"측정값을 문장으로 정리하는 중 문제가 생겨 항목별 관찰만 남겼습니다.")
     }
 
     private data class Ax(val score:Double,val confidence:Double,val observation:String,val interpretation:String)
@@ -339,7 +368,26 @@ object CriticEngine {
         }
     }
 
-    fun sections(a:Assessment,score:ScoreResult?,persona:Persona,level:Level,tone:Tone,depth:Depth):Map<String,String> {
+    private val SECTION_NAMES=listOf("종합 크리틱","관찰 사실","미적 해석","주요 강점","개선이 필요한 부분","구도","노출","색채","선명도","촬영 제안","보정 제안")
+
+    /** 문장 생성 중 어떤 오류가 나도 11개 항목이 채워진 리포트를 돌려준다. */
+    fun sections(a:Assessment,score:ScoreResult?,persona:Persona,level:Level,tone:Tone,depth:Depth):Map<String,String> =
+        try{buildSections(a,score,persona,level,tone,depth)}
+        catch(e:Throwable){fallbackSections(a,persona,level,tone)}
+
+    private fun fallbackSections(a:Assessment,persona:Persona,level:Level,tone:Tone):Map<String,String> {
+        val facts=runCatching{facts(a).joinToString(" ")}.getOrElse{"측정값을 요약하지 못했습니다."}
+        val opening="측정값을 문장으로 엮는 중 문제가 생겨 항목별 서술을 간단히 대신합니다. ${persona.title} 관점, 엄격도 ${level.title}, ${tone.title} 어조를 요청하셨습니다."
+        return SECTION_NAMES.associateWith{name->
+            when(name) {
+                "종합 크리틱"->opening
+                "관찰 사실"->facts
+                else->"$name 항목은 이번 측정값으로 완성하지 못했습니다. 관점이나 깊이를 바꾸어 다시 시도해 주십시오."
+            }
+        }
+    }
+
+    private fun buildSections(a:Assessment,score:ScoreResult?,persona:Persona,level:Level,tone:Tone,depth:Depth):Map<String,String> {
         val ev=a.evidence
         val resolved=score?:runCatching{Scoring.evaluate(a.nima.aesthetic,ev,persona,level)}.getOrNull()
         val contributions=resolved?.contributions?:ev.indices.map{persona.weights[it]*ev[it].score}

@@ -42,6 +42,12 @@ object ModelStore {
     }
 }
 object Nima {
+    /** TFLite 출력이 NaN이거나 합이 1에서 벗어나도 10구간 확률분포로 정리한다. */
+    private fun normalised(values:FloatArray):FloatArray {
+        val finite=FloatArray(10){index->if(values.size==10&&values[index].isFinite()&&values[index]>0f)values[index] else 0f}
+        val sum=finite.sum()
+        return if(sum>0f) FloatArray(10){finite[it]/sum} else FloatArray(10){.1f}
+    }
     fun analyze(folder:File,bitmap:Bitmap):NimaResult {
         val scaled=Bitmap.createScaledBitmap(bitmap,224,224,true)
         val pixels=IntArray(224*224);scaled.getPixels(pixels,0,224,0,0,224,224)
@@ -54,7 +60,7 @@ object Nima {
             buffer.rewind();val output=ByteBuffer.allocateDirect(40).order(ByteOrder.nativeOrder())
             interpreter.run(buffer,output);output.rewind();FloatArray(10){output.float}
         }
-        val a=infer("nima_aesthetic.tflite");val t=infer("nima_technical.tflite")
+        val a=normalised(infer("nima_aesthetic.tflite"));val t=normalised(infer("nima_technical.tflite"))
         val (mean,sd)=Scoring.distribution(a)
         return NimaResult(mean,Scoring.distribution(t).first,sd,a.toList())
     }
