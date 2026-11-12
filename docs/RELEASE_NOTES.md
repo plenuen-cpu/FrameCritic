@@ -9,7 +9,7 @@ After installing, the header must read a build number that matches this release 
 `offline-v2-`); if it does not, the old build is still the one running.
 
 Downloads:
-- `FrameCritic-2.0.0-arm64.apk`: installable APK (~20 MB). The file name keeps the 2.0 lineage that
+- `FrameCritic-2.0.0-arm64.apk`: installable APK (~65 MB). The file name keeps the 2.0 lineage that
   the release job has used since build 53; the app inside reports `v2.2.0`.
 - `FrameCritic-2.0.0-source-with-models.zip`: complete Android Studio project, pinned weight files,
   licenses and Gradle wrapper.
