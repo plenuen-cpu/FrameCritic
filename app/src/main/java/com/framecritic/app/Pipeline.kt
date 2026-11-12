@@ -55,6 +55,8 @@ object Pipeline {
     suspend fun analyze(context:Context,folder:File,bitmap:Bitmap,onProgress:(String)->Unit):Analysis {
         val start=System.currentTimeMillis()
         val work=runCatching{downscaled(bitmap)}.getOrDefault(bitmap)
+        // 분석이 끝나도 work(원본 또는 축소본)는 recycle()하지 않는다. work가 화면이 그리는 원본과
+        // 같은 인스턴스이면 수동 해제가 곧 다음 프레임의 Canvas RuntimeException이 된다. 해제는 GC에 맡긴다.
         try {
             return measureStages(context,folder,work,onProgress,start)
         } catch(e:CancellationException) {
@@ -62,8 +64,6 @@ object Pipeline {
         } catch(e:Throwable) {
             // 단계별 방어를 모두 지나온 뒤에도 실패하면, 중립 측정값으로 완성된 결과를 돌려준다.
             return neutralAnalysis(work,warnings=listOf("분석 준비 중 오류(${reason(e)})가 있어 중립 측정값으로 결과를 만들었습니다."),start=start)
-        } finally {
-            if(work!==bitmap) runCatching{work.recycle()}
         }
     }
 

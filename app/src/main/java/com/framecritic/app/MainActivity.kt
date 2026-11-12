@@ -26,13 +26,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -53,13 +59,13 @@ private val Ink=Color(0xFFECECE7)
 private val Accent=Color(0xFFC4DAA8)
 
 /** 로컬 빌드에서 쓸 기본 빌드 번호. CI 빌드는 릴리스 태그와 같은 런 번호를 쓴다. */
-const val BUILD_NUMBER=62
+const val BUILD_NUMBER=64
 
 /** 화면과 오류 기록에 쓰는 버전 표기. 릴리스 태그(offline-v2-N)의 N과 같은 번호를 보여준다. */
 fun appVersion(context:Context):String {
     val info=runCatching{context.packageManager.getPackageInfo(context.packageName,0)}.getOrNull()
     val build=if(BuildConfig.CI_RUN_NUMBER>0) BuildConfig.CI_RUN_NUMBER else BUILD_NUMBER
-    return "v${info?.versionName?:"2.0.1"} (Build $build)"
+    return "v${info?.versionName?:"2.0.2"} (Build $build)"
 }
 
 /** 전역 비정상 종료 로거. 스택 트레이스를 파일에 남기고 다음 실행에서 보여준 뒤 지운다. */
@@ -277,7 +283,7 @@ private fun safeFormat(template:String,vararg args:Any?):String=runCatching{Stri
             val x=(if(size.width>0f)pos.x/size.width else 0f).let{if(it.isFinite())it.coerceIn(0f,1f) else 0f}
             val y=(if(size.height>0f)pos.y/size.height else 0f).let{if(it.isFinite())it.coerceIn(0f,1f) else 0f}
             val subject=if(subjects)analysis?.subjects?.firstOrNull{it.box.contains(x,y)}else null
-            val clip=if(clips)analysis?.metrics?.clipMap?.let{map->
+            val clip=if(clips)analysis?.metrics?.clipMap?.takeIf{!it.isRecycled&&it.width>0&&it.height>0&&!bitmap.isRecycled&&bitmap.width>0&&bitmap.height>0}?.let{map->
                 val px=(x*(bitmap.width-1)).toInt().coerceIn(0,map.width-1)
                 val py=(y*(bitmap.height-1)).toInt().coerceIn(0,map.height-1)
                 runCatching{map.getPixel(px,py)}.getOrNull()
@@ -286,8 +292,8 @@ private fun safeFormat(template:String,vararg args:Any?):String=runCatching{Stri
                 clip!=null&&clip!=0->"선택 영역: ${if((clip and 0x00FF0000)!=0)"하이라이트" else "암부"} 극단값\n${report?.sections?.get("노출").orEmpty()}\n클리핑 여부만으로 결함을 확정하지 않습니다."
                 else->"${report?.sections?.get("구도")?:"선택 영역에 연결된 탐지 근거가 없습니다."}\n직선 표시는 수평선 후보이며 실제 지평선으로 확정하지 않습니다."}
         }}){
-            Image(bitmap.asImageBitmap(),contentDescription="분석 대상 사진",modifier=Modifier.fillMaxSize(),contentScale=ContentScale.FillBounds)
-            if(clips&&analysis!=null)analysis.metrics.clipMap?.let{Image(it.asImageBitmap(),contentDescription="빨강: 하이라이트, 파랑: 암부",modifier=Modifier.fillMaxSize(),contentScale=ContentScale.FillBounds)}
+            SafeBitmapImage(bitmap,"분석 대상 사진",Modifier.fillMaxSize())
+            if(clips&&analysis!=null)analysis.metrics.clipMap?.let{SafeBitmapImage(it,"빨강: 하이라이트, 파랑: 암부",Modifier.fillMaxSize())}
             Canvas(Modifier.matchParentSize()){
                 runCatching{
                     if(!size.width.isFinite()||!size.height.isFinite()||size.width<=0f||size.height<=0f) return@runCatching
@@ -312,7 +318,27 @@ private fun safeFormat(template:String,vararg args:Any?):String=runCatching{Stri
         detail?.let{Text(it,fontSize=12.sp,color=Accent)}
     }
 }
+/**
+ * recycle된 비트맵을 Compose Canvas에 넘기면 "Canvas: trying to use a recycled bitmap" 예외로
+ * 앱이 종료된다. 그리기 직전에 상태를 다시 확인하는 페인터로 감싸, 해제된 이미지는 그 프레임을 건너뛴다.
+ */
+private class GuardedBitmapPainter(private val bitmap:Bitmap):Painter() {
+    private val image:ImageBitmap?=runCatching{ if(bitmap.isRecycled) null else bitmap.asImageBitmap() }.getOrNull()
+    override val intrinsicSize:Size=image?.takeIf{it.width>0&&it.height>0}?.let{Size(it.width.toFloat(),it.height.toFloat())}?:Size.Zero
+    override fun DrawScope.onDraw() {
+        val drawn=image?:return
+        if(bitmap.isRecycled) return
+        val width=size.width.roundToInt();val height=size.height.roundToInt()
+        if(width<=0||height<=0) return
+        runCatching{drawImage(drawn,dstOffset=IntOffset.Zero,dstSize=IntSize(width,height),filterQuality=FilterQuality.Low)}
+    }
+}
+@Composable private fun SafeBitmapImage(bitmap:Bitmap,description:String,modifier:Modifier){
+    val painter=remember(bitmap){GuardedBitmapPainter(bitmap)}
+    Image(painter=painter,contentDescription=description,modifier=modifier,contentScale=ContentScale.FillBounds)
+}
 private fun renderShare(context:Context,photo:Bitmap,text:String):File {
+    check(!photo.isRecycled) { "사진이 해제되어 공유 이미지를 만들 수 없습니다. 사진을 다시 불러와 주세요." }
     val width=900;val margin=40;val photoHeight=(820.0*photo.height/photo.width).toInt().coerceIn(1,2000)
     val drawnWidth=(photoHeight.toDouble()*photo.width/photo.height).toInt().coerceIn(1,820)
     val paint=TextPaint(Paint.ANTI_ALIAS_FLAG).apply{color=android.graphics.Color.rgb(235,235,230);textSize=26f}

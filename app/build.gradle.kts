@@ -10,8 +10,8 @@ android {
         applicationId = "com.framecritic.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 21
-        versionName = "2.0.1"
+        versionCode = 22
+        versionName = "2.0.2"
         // GitHub Actions run number is the same number the release tag uses (offline-v2-N),
         // so the Build label on screen identifies the installed APK exactly.
         buildConfigField("int", "CI_RUN_NUMBER", System.getenv("GITHUB_RUN_NUMBER") ?: "0")

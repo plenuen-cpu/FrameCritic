@@ -100,6 +100,8 @@ object Nima {
      * 호출부(Pipeline)가 중립 점수로 대체한다.
      */
     fun analyze(folder:File,bitmap:Bitmap):NimaResult? {
+        // scaled는 recycle()하지 않는다. createScaledBitmap은 크기가 같으면 원본을 그대로 돌려주므로
+        // 그 경우 화면이 그리는 비트맵을 해제하게 된다. 해제는 GC에 맡긴다.
         val scaled=runCatching{Bitmap.createScaledBitmap(bitmap,224,224,true)}.getOrNull()?:return null
         try {
             val pixels=IntArray(224*224)
@@ -121,8 +123,6 @@ object Nima {
             )
         } catch(e:Throwable) {
             return null
-        } finally {
-            if(scaled!==bitmap) runCatching{scaled.recycle()}
         }
     }
 }

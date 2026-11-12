@@ -96,7 +96,8 @@ object Vision {
                 if(count==0) 0.0 else local/count,sharp,channel,hues.toList(),
                 candidates.sortedByDescending{hypot((it.x2-it.x1).toDouble(),(it.y2-it.y1).toDouble())}.take(5),clipMap,meanSaturation,edgeFraction)
         } finally {
-            if(source!==bitmap) runCatching{source.recycle()}
+            // 비트맵은 여기서 해제하지 않는다. source는 화면이 같은 원본을 그리는 동안
+            // 남아 있을 수 있어, 수동 recycle()은 다음 프레임의 Canvas 예외로 이어진다.
             mats.forEach{runCatching{it.release()}}
         }
     }
@@ -110,25 +111,35 @@ object Vision {
     fun subjects(context:Context,folder:File,bitmap:Bitmap):List<Subject> {
         val model=File(folder,"objects.tflite")
         check(model.isFile&&model.length()>0L) { "피사체 탐지 모델 파일이 없습니다." }
-        if(bitmap.width<=0||bitmap.height<=0) return emptyList()
+        if(bitmap.width<=0||bitmap.height<=0||bitmap.isRecycled) return emptyList()
         val options=ObjectDetector.ObjectDetectorOptions.builder()
             .setBaseOptions(baseOptions(model))
             .setScoreThreshold(.35f).setMaxResults(8).build()
-        return ObjectDetector.createFromOptions(context,options).use {detector->
-            val image=BitmapImageBuilder(bitmap).build()
-            try {
-                detector.detect(image).detections().mapNotNull {d->
-                    // categories()가 비어 있으면 maxBy가 예외를 던진다. maxByOrNull로 건너뛴다.
-                    val category=d.categories().maxByOrNull{it.score()}?:return@mapNotNull null
-                    val box=d.boundingBox()
-                    val width=bitmap.width.toFloat();val height=bitmap.height.toFloat()
-                    if(!(box.left.isFinite()&&box.top.isFinite()&&box.right.isFinite()&&box.bottom.isFinite())) return@mapNotNull null
-                    val left=box.left/width;val top=box.top/height;val right=box.right/width;val bottom=box.bottom/height
-                    if(!(left.isFinite()&&top.isFinite()&&right.isFinite()&&bottom.isFinite())) return@mapNotNull null
-                    if(right<=left||bottom<=top) return@mapNotNull null
-                    Subject(category.categoryName(),category.score(),RectF(left,top,right,bottom))
-                }
-            } finally {runCatching{image.close()}}
+        // MediaPipe에는 원본이 아니라 복사본을 넘긴다. MPImage를 닫을 때 MediaPipe가 넘겨받은
+        // 안드로이드 Bitmap을 recycle()하는 경로가 있어, 원본을 그대로 주면 화면이 그 사진을
+        // 그리던 중 "Canvas: trying to use a recycled bitmap"으로 앱이 종료된다.
+        val input=runCatching{bitmap.copy(Bitmap.Config.ARGB_8888,false)}.getOrNull()
+            ?:return emptyList()
+        try {
+            return ObjectDetector.createFromOptions(context,options).use {detector->
+                val image=BitmapImageBuilder(input).build()
+                try {
+                    detector.detect(image).detections().mapNotNull {d->
+                        // categories()가 비어 있으면 maxBy가 예외를 던진다. maxByOrNull로 건너뛴다.
+                        val category=d.categories().maxByOrNull{it.score()}?:return@mapNotNull null
+                        val box=d.boundingBox()
+                        val width=bitmap.width.toFloat();val height=bitmap.height.toFloat()
+                        if(!(box.left.isFinite()&&box.top.isFinite()&&box.right.isFinite()&&box.bottom.isFinite())) return@mapNotNull null
+                        val left=box.left/width;val top=box.top/height;val right=box.right/width;val bottom=box.bottom/height
+                        if(!(left.isFinite()&&top.isFinite()&&right.isFinite()&&bottom.isFinite())) return@mapNotNull null
+                        if(right<=left||bottom<=top) return@mapNotNull null
+                        Subject(category.categoryName(),category.score(),RectF(left,top,right,bottom))
+                    }
+                } finally {runCatching{image.close()}}
+            }
+        } finally {
+            // 해제하는 것은 복사본뿐이다. MediaPipe가 이미 닫아 두었다면 두 번 부르지 않는다.
+            runCatching{if(!input.isRecycled) input.recycle()}
         }
     }
 }
