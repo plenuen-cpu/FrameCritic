@@ -42,7 +42,12 @@ class LocalInference(private val context:Context,private val folder:File) {
                 }
             }
             val content:Any=if(bitmap==null)prompt else {
-                val bytes=ByteArrayOutputStream().use{check(bitmap.compress(Bitmap.CompressFormat.JPEG,90,it));it.toByteArray()}
+                val scaled=if(maxOf(bitmap.width,bitmap.height)>384){
+                    val r=384.0/maxOf(bitmap.width,bitmap.height)
+                    Bitmap.createScaledBitmap(bitmap,(bitmap.width*r).toInt().coerceAtLeast(1),(bitmap.height*r).toInt().coerceAtLeast(1),true)
+                }else bitmap
+                val bytes=ByteArrayOutputStream().use{check(scaled.compress(Bitmap.CompressFormat.JPEG,85,it));it.toByteArray()}
+                if(scaled!==bitmap)scaled.recycle()
                 JSONArray().put(JSONObject().put("type","image_url").put("image_url",JSONObject().put("url","data:image/jpeg;base64,"+Base64.encodeToString(bytes,Base64.NO_WRAP))))
                     .put(JSONObject().put("type","text").put("text",prompt))
             }
@@ -97,7 +102,7 @@ object Pipeline {
         val subjects=try{Vision.subjects(context,folder,bitmap)}catch(e:Exception){warnings+="피사체 탐지 실패: ${e.message}";emptyList()}
         onProgress("4/4 · SmolVLM2 사진 이해 · 수 분 걸릴 수 있습니다")
         val scene=try {
-            val vision=LocalInference(context,folder).generate("vision.gguf",bitmap,asset(context,"vision_prompt.txt"),null,350,contextSize=2048)
+            val vision=LocalInference(context,folder).generate("vision.gguf",bitmap,asset(context,"vision_prompt.txt"),null,350,contextSize=1024)
             val boxes=subjects.joinToString { "${it.label}: confidence=${it.confidence}, center=(${it.box.centerX()},${it.box.centerY()}), frameArea=${it.box.width()*it.box.height()}" }.ifBlank { "No COCO-category subject detected; not proof of an empty scene." }
             vision.put("composition",boxes+"; near-horizontal line candidates="+metrics.lines.size)
                 .put("lighting","Measured luminance=${metrics.luminance}/255; highlights=${metrics.highlights}; shadows=${metrics.shadows}. This does not establish light direction.")
