@@ -105,7 +105,8 @@ object Pipeline {
                 .put("focus","Measured Laplacian variance=${metrics.sharpness} at ${bitmap.width}x${bitmap.height}; subject matter affects this statistic.")
                 .put("spatial",boxes+"; these are 2D boxes, not measured depth.")
             onProgress("사진 관찰 근거로 미적 평가 항목 생성")
-            val rubric=LocalInference(context,folder).generate("korean.gguf",null,asset(context,"rubric_prompt.txt")+"\nDATA:\n"+vision.toString()+"\nMeasurements:\n"+metrics.json(),JSONObject(asset(context,"rubric_schema.json")),1600,contextSize=2048)
+            val rubricMetrics=metrics.json().apply { remove("luma_histogram_256"); remove("hue_histogram_12") }
+            val rubric=LocalInference(context,folder).generate("korean.gguf",null,asset(context,"rubric_prompt.txt")+"\nDATA:\n"+vision.toString()+"\nMeasurements:\n"+rubricMetrics,JSONObject(asset(context,"rubric_schema.json")),1200,contextSize=2560)
             val evidence=Axis.entries.map{axis->
                 val item=rubric.getJSONObject(axis.name);val source=item.getString("source")
                 val observation=if(source=="unknown")"관찰 근거 부족" else vision.getString(source)
