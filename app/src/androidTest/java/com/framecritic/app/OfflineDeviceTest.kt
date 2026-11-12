@@ -16,7 +16,7 @@ class OfflineDeviceTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val folder=ModelStore.prepare(context){}
         val b=Bitmap.createBitmap(320,320,Bitmap.Config.ARGB_8888).apply{eraseColor(Color.GRAY)}
-        try{val n=Nima.analyze(folder,b);assertTrue(n.aesthetic in 1.0..10.0);val m=Vision.metrics(b);assertEquals(0.0,m.sharpness,1e-5);Vision.subjects(context,folder,b)}finally{b.recycle()}
+        try{val n=Nima.analyze(folder,b);assertNotNull("NIMA가 중립값도 돌려주지 못했습니다.",n);assertTrue(n!!.aesthetic in 1.0..10.0);val m=Vision.metrics(b);assertEquals(0.0,m.sharpness,1e-5);Vision.subjects(context,folder,b)}finally{b.recycle()}
     }
     @Test fun prepareSkipsLargeLanguageWeights()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
