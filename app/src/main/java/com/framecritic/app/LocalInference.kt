@@ -16,12 +16,12 @@ import java.util.concurrent.TimeUnit
 
 /** Authenticated loopback only. Process is always stopped after each model stage. */
 class LocalInference(private val context:Context,private val folder:File) {
-    suspend fun generate(model:String,bitmap:Bitmap?,prompt:String,schema:JSONObject?,tokens:Int):JSONObject=withContext(Dispatchers.IO) {
+    suspend fun generate(model:String,bitmap:Bitmap?,prompt:String,schema:JSONObject?,tokens:Int,contextSize:Int=2048):JSONObject=withContext(Dispatchers.IO) {
         val executable=File(context.applicationInfo.nativeLibraryDir,"libframecritic-server.so")
         check(executable.isFile) { "APK에 ARM64 추론 런타임이 없습니다." }
         val port=ServerSocket(0).use{it.localPort};val key=UUID.randomUUID().toString()
         val command=mutableListOf(executable.absolutePath,"-m",File(folder,model).absolutePath,
-            "--host","127.0.0.1","--port","$port","--api-key",key,"-c","8192","-t","4",
+            "--host","127.0.0.1","--port","$port","--api-key",key,"-c","$contextSize","-t","4",
             "-ngl","0","-np","1","--no-warmup","--reasoning","off","--no-webui")
         if(bitmap!=null)command+=listOf("--mmproj",File(folder,"mmproj.gguf").absolutePath,"--no-mmproj-offload")
         val log=File(context.cacheDir,"inference.log")
@@ -97,7 +97,7 @@ object Pipeline {
         val subjects=try{Vision.subjects(context,folder,bitmap)}catch(e:Exception){warnings+="피사체 탐지 실패: ${e.message}";emptyList()}
         onProgress("4/4 · SmolVLM2 사진 이해 · 수 분 걸릴 수 있습니다")
         val scene=try {
-            val vision=LocalInference(context,folder).generate("vision.gguf",bitmap,asset(context,"vision_prompt.txt"),null,350)
+            val vision=LocalInference(context,folder).generate("vision.gguf",bitmap,asset(context,"vision_prompt.txt"),null,350,contextSize=2048)
             val boxes=subjects.joinToString { "${it.label}: confidence=${it.confidence}, center=(${it.box.centerX()},${it.box.centerY()}), frameArea=${it.box.width()*it.box.height()}" }.ifBlank { "No COCO-category subject detected; not proof of an empty scene." }
             vision.put("composition",boxes+"; near-horizontal line candidates="+metrics.lines.size)
                 .put("lighting","Measured luminance=${metrics.luminance}/255; highlights=${metrics.highlights}; shadows=${metrics.shadows}. This does not establish light direction.")
@@ -105,7 +105,7 @@ object Pipeline {
                 .put("focus","Measured Laplacian variance=${metrics.sharpness} at ${bitmap.width}x${bitmap.height}; subject matter affects this statistic.")
                 .put("spatial",boxes+"; these are 2D boxes, not measured depth.")
             onProgress("사진 관찰 근거로 미적 평가 항목 생성")
-            val rubric=LocalInference(context,folder).generate("korean.gguf",null,asset(context,"rubric_prompt.txt")+"\nDATA:\n"+vision.toString()+"\nMeasurements:\n"+metrics.json(),JSONObject(asset(context,"rubric_schema.json")),1600)
+            val rubric=LocalInference(context,folder).generate("korean.gguf",null,asset(context,"rubric_prompt.txt")+"\nDATA:\n"+vision.toString()+"\nMeasurements:\n"+metrics.json(),JSONObject(asset(context,"rubric_schema.json")),1600,contextSize=2048)
             val evidence=Axis.entries.map{axis->
                 val item=rubric.getJSONObject(axis.name);val source=item.getString("source")
                 val observation=if(source=="unknown")"관찰 근거 부족" else vision.getString(source)
@@ -133,7 +133,8 @@ object Pipeline {
             val properties=schema.getJSONObject("properties")
             val maxChars=when(d){Depth.QUICK->110;Depth.STANDARD->180;Depth.EXPERT->260}
             properties.keys().forEach { key->properties.getJSONObject(key).put("maxLength",maxChars).put("pattern","^[가-힣][^\\n]{0,"+(maxChars-1)+"}$") }
-            val result=LocalInference(context,folder).generate("korean.gguf",null,prompt,schema,d.tokens)
+            val reportCtx=when(d){Depth.QUICK->2560;Depth.STANDARD->3584;Depth.EXPERT->4608}
+            val result=LocalInference(context,folder).generate("korean.gguf",null,prompt,schema,d.tokens,contextSize=reportCtx)
             val labels=linkedMapOf("summary" to "종합 크리틱","observations" to "관찰 사실 · VLM 추정","interpretation" to "미적 해석","strengths" to "주요 강점","improvements" to "개선이 필요한 부분","composition" to "구도","exposure" to "노출","color" to "색채","sharpness" to "선명도","shooting" to "촬영 제안","editing" to "보정 제안")
             val sections=labels.map{(k,v)->v to result.getString(k).also{check(it.isNotBlank()){ "빈 리포트 항목: $k" }}}.toMap()
             check(sections.values.all{value->value.count{it in '가'..'힣'}>=3}){"한국어 생성 품질 확인에 실패했습니다."}

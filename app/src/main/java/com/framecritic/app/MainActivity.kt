@@ -117,7 +117,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
                         val important=score.contributions.indices.sortedByDescending{score.contributions[it]}.take(3)
                         Text("이 관점의 점수에 크게 기여한 항목: "+important.joinToString{Axis.entries[it].title}+". 다른 관점은 같은 사진 근거에 다른 가중치를 적용합니다.",fontSize=12.sp)
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(16.dp)){
-                            Level.entries.forEach{l->Text("${l.title} %.2f".format(Scoring.evaluate(a.nima.aesthetic,scene.evidence,report.persona,l).adjusted),fontSize=12.sp)}
+                            Level.entries.forEach{l->val scoreText=runCatching{"%.2f".format(Scoring.evaluate(a.nima.aesthetic,scene.evidence,report.persona,l).adjusted)}.getOrElse{"—"};Text("${l.title} $scoreText",fontSize=12.sp)}
                         }
                         Persona.entries.forEach{p->val other=runCatching{Scoring.evaluate(a.nima.aesthetic,scene.evidence,p,report.level)}.getOrNull();Text("${p.title}: ${other?.adjusted?.let{"%.2f".format(it)}?:"신뢰도 부족"}",fontSize=12.sp,color=Color.Gray)}
                         Axis.entries.forEachIndexed{i,axis->
