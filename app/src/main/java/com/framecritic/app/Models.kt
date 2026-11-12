@@ -9,6 +9,7 @@ import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.security.DigestInputStream
 import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
 
@@ -21,14 +22,15 @@ object ModelStore {
             val entry=list.getJSONObject(i);val name=entry.getString("name");val size=entry.getLong("size")
             val file=File(folder,name);val sha=entry.getString("sha256")
             onProgress("내장 모델 확인 ${i+1}/${list.length()} · $name")
-            val md=MessageDigest.getInstance("SHA-256")
-            fun digest(f:File):String { md.reset();f.inputStream().use{input->val b=ByteArray(1024*1024);while(true){val n=input.read(b);if(n<0)break;md.update(b,0,n)}};return md.digest().joinToString(""){"%02x".format(it)} }
-            if(file.exists() && file.length()==size && digest(file)==sha) continue
+            if(file.exists() && file.length()==size) continue
             check(StatFs(folder.path).availableBytes>size+64*1024*1024) { "내장 모델을 준비할 저장 공간이 부족합니다. 약 1.8GB의 여유 공간을 확보하세요." }
             val tmp=File(folder,"$name.part")
             try {
-                context.assets.open("models/$name").use{input->tmp.outputStream().use{out->val b=ByteArray(1024*1024);while(true){coroutineContext.ensureActive();val n=input.read(b);if(n<0)break;out.write(b,0,n)}}}
-                check(tmp.length()==size && digest(tmp)==sha) { "모델 무결성 검사 실패: $name" }
+                val md=MessageDigest.getInstance("SHA-256")
+                val stream=DigestInputStream(context.assets.open("models/$name"),md)
+                stream.use{input->tmp.outputStream().use{out->val b=ByteArray(64*1024);while(true){coroutineContext.ensureActive();val n=input.read(b);if(n<0)break;out.write(b,0,n)}}}
+                val hash=md.digest().joinToString(""){"%02x".format(it)}
+                check(tmp.length()==size && hash==sha) { "모델 무결성 검사 실패: $name" }
                 check(tmp.renameTo(file)) { "모델 파일 저장 실패" }
             } finally {tmp.delete()}
         }
