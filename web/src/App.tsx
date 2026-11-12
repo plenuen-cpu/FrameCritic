@@ -38,7 +38,7 @@ const LEVEL = LEVEL_BY_KEY.BALANCED
 /** 첫 화면에 보여 주는 NIMA 모델 준비 상태. */
 const MODEL_LABEL: Record<NimaStatus, string> = {
   idle: '미적 점수는 브라우저에서 돌리는 NIMA 신경망이 계산합니다',
-  loading: 'NIMA 신경망을 준비하는 중입니다 (약 13MB, 한 번만 내려받습니다)',
+  loading: 'NIMA 신경망을 준비하는 중입니다 (모델 13MB + 실행기, 한 번만 내려받습니다)',
   ready: 'NIMA 신경망 준비 완료 · 사진은 기기 밖으로 나가지 않습니다',
   unavailable: 'NIMA 모델을 불러오지 못해 측정값 기반 추정으로 분석합니다',
 }

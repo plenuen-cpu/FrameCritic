@@ -35,7 +35,9 @@ sit in a fold-out block at the bottom.
   normalised to [-1, 1], the softmax output is the 10-bin score distribution, and the score is its
   weighted mean (standard deviation is reported alongside). Measured with headless Chromium: ~85 ms
   for both models after a first load, and scores matched a Python LiteRT reference to within 0.11
-  on the same photo (browser canvas resampling vs bicubic is the only difference).
+  on the same photo (browser canvas resampling vs bicubic is the only difference). A first visit
+  downloads about 24 MB — 12.9 MB of models plus the 11 MB WASM runtime variant the browser picks —
+  and the browser caches both.
 - **Assets:** `web/scripts/prepare-assets.cjs` downloads the two models (SHA-256 verified against
   `app/src/main/assets/models/manifest.json`), pins their dynamic batch dimension to 1 (LiteRT.js
   compares input shapes against the model's `shape_signature`), and copies the LiteRT WASM runtime
