@@ -4,3 +4,7 @@ dist/
 *.local
 .DS_Store
 .verify/
+
+# scripts/prepare-assets.cjs가 npm install 뒤에 내려받아 만든다 (manifest.json의 URL·SHA-256으로 검증)
+public/models/
+public/litert/

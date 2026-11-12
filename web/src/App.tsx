@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ScoreHero from './components/ScoreHero'
 import MeasurementPanel from './components/MeasurementPanel'
 import { analyzeImage, loadImage, type Analysis } from './lib/analyzer'
+import { nimaStatus, prepareNima, type NimaStatus } from './lib/nima'
 import {
   SECTION_TITLES,
   assess,
@@ -34,6 +35,14 @@ type Stage = 'empty' | 'loaded' | 'working' | 'done'
 const PERSONA = PERSONA_BY_KEY.BALANCED
 const LEVEL = LEVEL_BY_KEY.BALANCED
 
+/** 첫 화면에 보여 주는 NIMA 모델 준비 상태. */
+const MODEL_LABEL: Record<NimaStatus, string> = {
+  idle: '미적 점수는 브라우저에서 돌리는 NIMA 신경망이 계산합니다',
+  loading: 'NIMA 신경망을 준비하는 중입니다 (약 13MB, 한 번만 내려받습니다)',
+  ready: 'NIMA 신경망 준비 완료 · 사진은 기기 밖으로 나가지 않습니다',
+  unavailable: 'NIMA 모델을 불러오지 못해 측정값 기반 추정으로 분석합니다',
+}
+
 export default function App() {
   const [stage, setStage] = useState<Stage>('empty')
   const [depthKey, setDepthKey] = useState<DepthKey>('STANDARD')
@@ -42,7 +51,14 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [modelState, setModelState] = useState<NimaStatus>(() => nimaStatus())
   const inputRef = useRef<HTMLInputElement | null>(null)
+
+  /** NIMA 모델은 처음 화면이 뜰 때 미리 받아 둔다. 사진을 고른 뒤 기다리지 않게 하기 위해서다. */
+  useEffect(() => {
+    setModelState('loading')
+    void prepareNima().then(() => setModelState(nimaStatus()))
+  }, [])
 
   const fileFromEvent = (event: React.DragEvent<HTMLDivElement>) => {
     const file = event.dataTransfer.files?.[0]
@@ -84,33 +100,36 @@ export default function App() {
       setStage('working')
       setError(null)
       window.setTimeout(() => {
-        try {
-          const analysis = analyzeImage(source.image)
-          const assessment = assess(analysis.nima, analysis.measure, analysis.subjects)
-          const score = evaluate(assessment.nima.aesthetic, assessment.evidence, PERSONA, LEVEL)
-          const depthConfig = DEPTH_BY_KEY[depth]
-          const critique = sections(assessment, {
-            persona: PERSONA,
-            level: LEVEL,
-            tone: 'MENTOR',
-            depth: depthConfig,
-            score,
-          })
-          const line = verdict(assessment, score?.adjusted ?? 0)
-          setResult({
-            url: source.url,
-            image: source.image,
-            analysis,
-            assessment,
-            score,
-            critique,
-            verdict: line,
-          })
-          setStage('done')
-        } catch (caught) {
-          setError(caught instanceof Error ? caught.message : '분석 중 문제가 생겼습니다.')
-          setStage('loaded')
-        }
+        void (async () => {
+          try {
+            const analysis = await analyzeImage(source.image)
+            const assessment = assess(analysis.nima, analysis.measure, analysis.subjects)
+            const score = evaluate(assessment.nima.aesthetic, assessment.evidence, PERSONA, LEVEL)
+            const depthConfig = DEPTH_BY_KEY[depth]
+            const critique = sections(assessment, {
+              persona: PERSONA,
+              level: LEVEL,
+              tone: 'MENTOR',
+              depth: depthConfig,
+              score,
+            })
+            const line = verdict(assessment, score?.adjusted ?? 0)
+            setResult({
+              url: source.url,
+              image: source.image,
+              analysis,
+              assessment,
+              score,
+              critique,
+              verdict: line,
+            })
+            setModelState(analysis.nimaSource === 'MODEL' ? 'ready' : nimaStatus())
+            setStage('done')
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : '분석 중 문제가 생겼습니다.')
+            setStage('loaded')
+          }
+        })()
       }, 40)
     },
     [image],
@@ -137,7 +156,10 @@ export default function App() {
     }
     lines.push('')
     lines.push('── 상세 측정 데이터 및 기술적 근거 ──')
-    for (const group of measurements(result.assessment, result.score)) {
+    for (const group of measurements(result.assessment, result.score, {
+      source: result.analysis.nimaSource,
+      modelMs: result.analysis.nimaMs,
+    })) {
       lines.push(`[${group.title}]`)
       for (const [label, value] of group.rows) lines.push(`${label}: ${value}`)
     }
@@ -197,6 +219,7 @@ export default function App() {
             <p className="text-base text-ink">사진을 여기에 떨어뜨리거나 눌러서 선택</p>
             <p className="text-xs text-muted">빛과 색, 구도, 질감을 한 장에서 읽어 냅니다</p>
             <p className="text-[11px] text-muted">분석은 이 브라우저 안에서만 이루어집니다</p>
+            <p className="text-[11px] text-sage/80">{MODEL_LABEL[modelState]}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -282,7 +305,7 @@ export default function App() {
             <div className="h-[3px] w-full overflow-hidden rounded-full bg-hairline">
               <div className="h-full w-1/2 animate-pulse rounded-full bg-sage" />
             </div>
-            <p className="text-xs text-muted">픽셀을 재고, 근거로 문장을 쓰는 중입니다.</p>
+            <p className="text-xs text-muted">픽셀을 재고, NIMA 신경망으로 미적 점수를 계산한 뒤 근거로 문장을 쓰는 중입니다.</p>
           </div>
         ) : null}
 
@@ -304,6 +327,8 @@ export default function App() {
             <MeasurementPanel
               assessment={result.assessment}
               score={result.score}
+              nimaSource={result.analysis.nimaSource}
+              nimaMs={result.analysis.nimaMs}
               elapsedMs={result.analysis.elapsedMs}
               size={{ width: result.analysis.width, height: result.analysis.height }}
             />
@@ -322,8 +347,12 @@ export default function App() {
             피사체·의도·감정을 사실처럼 말하지 않습니다.
           </p>
           <p>
-            웹 버전은 브라우저에 내장된 캔버스 측정만 사용합니다. 미적 점수와 주요 영역은 기기 앱의 신경망 추론을 대신하는
-            추정치이며, 기기 앱과 같은 문장 규칙을 공유합니다.
+            미적·기술 점수는 idealo의 NIMA(Neural Image Assessment) MobileNet 모델을 이 브라우저에서 직접 돌려 계산합니다. 모델은 처음
+            한 번만 내려받아 브라우저에 캐시되고, 사진은 기기 밖으로 나가지 않습니다.
+          </p>
+          <p>
+            모델을 불러오지 못하는 브라우저에서는 캔버스 측정값에서 계산한 추정으로 대신하며, 상세 측정 부록에 그 사실을 적습니다. 비평
+            본문은 두 경우 모두 기기 앱과 같은 결정론적 문장 규칙으로 씁니다.
           </p>
         </footer>
       </main>

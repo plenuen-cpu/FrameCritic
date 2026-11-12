@@ -162,6 +162,9 @@ export interface NimaResult {
   probabilities: number[]
 }
 
+/** 미적·기술 점수를 어디서 얻었는지. MODEL은 브라우저에서 돌린 NIMA 추론, ESTIMATE는 캔버스 측정 추정이다. */
+export type NimaSource = 'MODEL' | 'ESTIMATE'
+
 export interface ScoreResult {
   rawNima: number
   weighted: number

@@ -25,4 +25,6 @@ NIMA conversion: community MobileNet AVA and TID2013 fp16 TFLite, 6.45MB each, f
 
 NIMA image stretching follows the distribution model's documented 224-square input; geometric overlays use the aspect-preserving original analysis image. NIMA/technical scores are separately identified.
 
+Web build: the published NIMA files declare a dynamic batch axis (`shape_signature` = -1). LiteRT.js compares the input tensor shape against that signature exactly and refuses a `[1,224,224,3]` input, so `web/scripts/prepare-assets.cjs` rewrites only those `shape_signature` entries to the already-computed static shape (1). Operators, weights and buffers are untouched; the patched file reproduces the Python LiteRT interpreter's distributions bit-for-bit, and the browser (LiteRT.js, XNNPACK) matches that reference within 0.11 on the same photo, the residual coming from canvas resampling.
+
 MediaPipe EfficientDet-Lite0 int8: official versioned model, COCO detector; does not infer importance or foreground depth from a bounding box alone. Areas/centers/edge space are geometric estimates. No saliency model was obtained; no saliency heatmap is simulated.

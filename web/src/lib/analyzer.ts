@@ -7,17 +7,21 @@
  *  - 평균 RGB, 채널 차, 색온도 방향, 12구간 색상 히스토그램, 평균 채도
  *  - 수평선 후보의 기울기(투영 누적), 눈에 띄는 영역(블록 대비·에지 밀도)
  *
- * NIMA와 객체 검출은 브라우저에 모델을 내려받지 않기 위해, 위 측정값에서 계산한
- * 휴리스틱으로 대체한다. 화면에는 그 사실을 숨기지 않고 '추정'으로 표기한다.
+ * 미적·기술 점수는 브라우저에서 직접 돌리는 NIMA 신경망(nima.ts)이 계산한다.
+ * 모델을 내려받지 못하거나 WebAssembly를 쓸 수 없을 때만, 위 측정값에서 계산한
+ * 휴리스틱으로 대체하고 화면에 '추정'으로 표기한다.
  */
 
-import type { NimaResult } from './domain'
+import type { NimaResult, NimaSource } from './domain'
+import { inferNima, toNimaResult } from './nima'
 import { Measure, SubjectBox } from './critic-engine'
 import type { LineCandidate } from './critic-engine'
 
 export interface Analysis {
   measure: Measure
   nima: NimaResult
+  nimaSource: NimaSource
+  nimaMs: number
   subjects: SubjectBox[]
   elapsedMs: number
   width: number
@@ -261,7 +265,7 @@ function salience(
 }
 
 /**
- * NIMA 대체 휴리스틱. 측정값만으로 '어느 정도 정리된 사진인가'를 추정한다.
+ * NIMA를 쓸 수 없을 때의 대체 휴리스틱. 측정값만으로 '어느 정도 정리된 사진인가'를 추정한다.
  * 객관적 예술 평가가 아니며, 화면과 문서 어디에서도 그렇게 주장하지 않는다.
  */
 function estimateNima(
@@ -411,14 +415,21 @@ export function measurePixels(data: Uint8ClampedArray, width: number, height: nu
   }
 }
 
-/** 사진 한 장을 재고, 비평 엔진이 쓸 Measure를 만든다. */
-export function analyzeImage(image: HTMLImageElement | ImageBitmap): Analysis {
+/**
+ * 사진 한 장을 재고, 비평 엔진이 쓸 Measure와 NIMA 점수를 만든다.
+ * 픽셀 측정은 동기로 끝나고, 신경망 추론(모델 첫 로딩 포함)만 기다린다.
+ */
+export async function analyzeImage(image: HTMLImageElement | ImageBitmap): Promise<Analysis> {
   const started = performance.now()
   const { ctx, width, height } = drawToCanvas(image)
   const data = ctx.getImageData(0, 0, width, height).data
   const core = measurePixels(data, width, height)
+  const inference = await inferNima(image)
   return {
     ...core,
+    nima: inference ? toNimaResult(inference) : core.nima,
+    nimaSource: inference ? 'MODEL' : 'ESTIMATE',
+    nimaMs: inference?.modelMs ?? 0,
     elapsedMs: Math.max(1, Math.round(performance.now() - started)),
     width,
     height,

@@ -16,6 +16,7 @@ import {
   Level,
   LevelKey,
   NimaResult,
+  NimaSource,
   Persona,
   PersonaKey,
   ScoreResult,
@@ -2453,19 +2454,34 @@ function editing(a: Assessment, tone: ToneKey, depth: Depth, weak: number[]): st
 }
 
 // ---------- 상세 측정 데이터 및 기술적 근거 ----------
-export function measurements(a: Assessment, score: ScoreResult | null): MeasureGroup[] {
+export interface NimaMeta {
+  source: NimaSource
+  modelMs?: number
+}
+
+export function measurements(
+  a: Assessment,
+  score: ScoreResult | null,
+  nima?: NimaMeta,
+): MeasureGroup[] {
   const m = a.measure
   const main = a.subjects[0]
   const groups: MeasureGroup[] = []
-  groups.push({
-    title: '평가 모델',
-    rows: [
-      ['미적 추정 점수', `${f2(a.nima.aesthetic)} / 10`],
-      ['기술 추정 점수', `${f2(a.nima.technical)} / 10`],
-      ['확률분포 표준편차', f2(a.nima.deviation)],
-      ['분석 해상도', `${m.width}×${m.height}`],
-    ],
-  })
+  const modelScores = nima?.source === 'MODEL'
+  const modelRows: [string, string][] = [
+    [modelScores ? 'NIMA 미적 점수' : '미적 추정 점수', `${f2(a.nima.aesthetic)} / 10`],
+    [modelScores ? 'NIMA 기술 점수' : '기술 추정 점수', `${f2(a.nima.technical)} / 10`],
+    ['확률분포 표준편차', f2(a.nima.deviation)],
+    ['분석 해상도', `${m.width}×${m.height}`],
+  ]
+  if (nima) {
+    modelRows.push([
+      '점수 출처',
+      modelScores ? '브라우저 내 NIMA 추론 (MobileNet · LiteRT WASM)' : '캔버스 측정 기반 추정 (모델 미적용)',
+    ])
+    if (modelScores && nima.modelMs) modelRows.push(['모델 추론 시간', `${nima.modelMs}ms`])
+  }
+  groups.push({ title: '평가 모델', rows: modelRows })
   groups.push({
     title: '빛과 계조',
     rows: [
@@ -2523,7 +2539,7 @@ export function measurements(a: Assessment, score: ScoreResult | null): MeasureG
         ['보정 전', f2(score.base)],
         ['부스팅 후', f2(score.adjusted)],
         ['가중 신뢰도', p0(score.coverage)],
-        ['산식', '미적 추정 40% + 근거 60%, 1 + 9·x^γ'],
+        ['산식', `${modelScores ? 'NIMA 미적' : '미적 추정'} 40% + 근거 60%, 1 + 9·x^γ`],
         ['γ (Generous·Balanced·Strict)', '0.40 · 0.55 · 0.85'],
       ],
     })

@@ -5,6 +5,9 @@
   "type": "module",
   "description": "FrameCritic — 브라우저 안에서 사진을 읽고 비평을 쓰는 웹 앱",
   "scripts": {
+    "assets": "node scripts/prepare-assets.cjs",
+    "predev": "node scripts/prepare-assets.cjs",
+    "prebuild": "node scripts/prepare-assets.cjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
@@ -12,6 +15,7 @@
     "check": "node scripts/contract-check.cjs"
   },
   "dependencies": {
+    "@litertjs/core": "^2.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

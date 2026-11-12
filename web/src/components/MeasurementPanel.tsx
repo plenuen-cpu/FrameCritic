@@ -5,11 +5,13 @@ import {
   measurements,
   type Assessment,
 } from '../lib/critic-engine'
-import type { ScoreResult } from '../lib/domain'
+import type { NimaSource, ScoreResult } from '../lib/domain'
 
 interface MeasurementPanelProps {
   assessment: Assessment
   score: ScoreResult | null
+  nimaSource: NimaSource
+  nimaMs: number
   elapsedMs: number
   size: { width: number; height: number }
 }
@@ -18,11 +20,19 @@ interface MeasurementPanelProps {
  * 접었을 때는 한 줄, 펼치면 모든 수치와 근거 문장을 보여준다.
  * 화면 본문에 없는 숫자는 전부 여기에만 남는다.
  */
-export default function MeasurementPanel({ assessment, score, elapsedMs, size }: MeasurementPanelProps) {
+export default function MeasurementPanel({
+  assessment,
+  score,
+  nimaSource,
+  nimaMs,
+  elapsedMs,
+  size,
+}: MeasurementPanelProps) {
   const [open, setOpen] = useState(false)
-  const groups = measurements(assessment, score)
+  const groups = measurements(assessment, score, { source: nimaSource, modelMs: nimaMs })
   const evidence = evidenceLines(assessment)
   const nima = assessment.nima
+  const modelScores = nimaSource === 'MODEL'
 
   return (
     <section className="border-t border-hairline pt-2">
@@ -63,7 +73,9 @@ export default function MeasurementPanel({ assessment, score, elapsedMs, size }:
           </div>
 
           <div>
-            <h4 className="mb-3 text-xs tracking-widest text-sage">미적 추정 확률분포</h4>
+            <h4 className="mb-3 text-xs tracking-widest text-sage">
+              {modelScores ? 'NIMA 미적 확률분포' : '미적 추정 확률분포'}
+            </h4>
             <div className="flex h-16 items-end gap-1">
               {nima.probabilities.map((value, index) => {
                 const max = Math.max(...nima.probabilities, 0.0001)

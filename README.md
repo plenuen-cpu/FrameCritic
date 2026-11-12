@@ -28,17 +28,33 @@ photo, press **사진 분석하기**, and the score plus ten critique sections a
 sit in a fold-out block at the bottom.
 
 - **Stack:** Vite + React + TypeScript + Tailwind CSS, static output in `web/dist`.
+- **NIMA on device:** the aesthetic and technical scores come from the real NIMA MobileNet models
+  (`nima_aesthetic`/`nima_technical`, fp16 TFLite, 6.4 MB each) executed inside the browser with
+  [LiteRT.js](https://ai.google.dev/edge/litert/web) on WebAssembly/XNNPACK. The models are fetched
+  once, cached by the browser and never uploaded to; a photo never leaves the tab. 224×224 RGB is
+  normalised to [-1, 1], the softmax output is the 10-bin score distribution, and the score is its
+  weighted mean (standard deviation is reported alongside). Measured with headless Chromium: ~85 ms
+  for both models after a first load, and scores matched a Python LiteRT reference to within 0.11
+  on the same photo (browser canvas resampling vs bicubic is the only difference).
+- **Assets:** `web/scripts/prepare-assets.cjs` downloads the two models (SHA-256 verified against
+  `app/src/main/assets/models/manifest.json`), pins their dynamic batch dimension to 1 (LiteRT.js
+  compares input shapes against the model's `shape_signature`), and copies the LiteRT WASM runtime
+  out of `node_modules`. It runs automatically through `predev`/`prebuild`, so `public/models` and
+  `public/litert` stay out of git.
 - **Measurement:** HTML5 Canvas reads the pixels directly — 256-bin luminance histogram, mean
   luminance, highlight/shadow clipping, global contrast (standard deviation), local contrast
   (mean of 32px block standard deviations), Laplacian variance, Sobel edge density, mean RGB,
   channel spread, 12-bin hue histogram, mean saturation, near-horizontal line candidates
-  (angle-projected accumulation) and a salience region from block contrast and edge density.
+  (angle-projected accumulation) and a salience region from block contrast and edge density. The
+  "주요 영역" box is that salience estimate — there is no object detector in the browser, so it marks
+  where attention lands geometrically and names no object.
 - **Engine:** `web/src/lib/critic-engine.ts` is a line-for-line port of the Kotlin engine. It was
   verified against 4,050 Kotlin outputs (5 measurement sets × 3 subject sets × 2 NIMA results ×
   every persona · level · tone · depth combination); section text and scores matched exactly.
-- **Honesty:** the browser has no NIMA or object-detection weights, so the aesthetic score and the
-  "주요 영역" box are heuristics computed from the measurements. The UI and the copied report say
-  "추정" and never present them as neural-network output.
+- **Fallback:** if the models cannot be fetched, or the browser lacks WebAssembly, the analysis
+  still runs on the canvas measurements, and both the UI and the copied report label the score
+  "추정" (estimate) instead of "NIMA". The measurement appendix always states which path produced
+  the score, plus the model inference time when the network ran.
 - **Check:** `npm run build` runs `tsc --noEmit` and the production build; `node scripts/contract-check.cjs`
   replays 5,400 generated sections and fails on any digit or measurement word in the critique body.
 
