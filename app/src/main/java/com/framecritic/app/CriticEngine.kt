@@ -368,7 +368,8 @@ object CriticEngine {
         }
     }
 
-    private val SECTION_NAMES=listOf("종합 크리틱","관찰 사실","미적 해석","주요 강점","개선이 필요한 부분","구도","노출","색채","선명도","촬영 제안","보정 제안")
+    /** 리포트가 반드시 채워야 하는 11개 항목. Pipeline이 이 목록과 대조해 빈 항목을 보정한다. */
+    val SECTION_TITLES=listOf("종합 크리틱","관찰 사실","미적 해석","주요 강점","개선이 필요한 부분","구도","노출","색채","선명도","촬영 제안","보정 제안")
 
     /** 문장 생성 중 어떤 오류가 나도 11개 항목이 채워진 리포트를 돌려준다. */
     fun sections(a:Assessment,score:ScoreResult?,persona:Persona,level:Level,tone:Tone,depth:Depth):Map<String,String> =
@@ -378,7 +379,7 @@ object CriticEngine {
     private fun fallbackSections(a:Assessment,persona:Persona,level:Level,tone:Tone):Map<String,String> {
         val facts=runCatching{facts(a).joinToString(" ")}.getOrElse{"측정값을 요약하지 못했습니다."}
         val opening="측정값을 문장으로 엮는 중 문제가 생겨 항목별 서술을 간단히 대신합니다. ${persona.title} 관점, 엄격도 ${level.title}, ${tone.title} 어조를 요청하셨습니다."
-        return SECTION_NAMES.associateWith{name->
+        return SECTION_TITLES.associateWith{name->
             when(name) {
                 "종합 크리틱"->opening
                 "관찰 사실"->facts

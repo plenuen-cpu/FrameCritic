@@ -10,8 +10,8 @@ android {
         applicationId = "com.framecritic.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 20
-        versionName = "2.0.0"
+        versionCode = 21
+        versionName = "2.0.1"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -19,7 +19,9 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
-    packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/libframecritic-server.so" } }
+    // 빌드 58부터 앱은 네이티브 추론 프로세스를 쓰지 않는다. 검증용으로만 만드는
+    // libframecritic-server.so(~90MB)는 APK에 넣지 않는다.
+    packaging { jniLibs { useLegacyPackaging = true; excludes += "**/libframecritic-server.so" } }
     // The critic engine is measurement-only: the GGUF language/vision weights are no longer loaded,
     // so they are kept out of the APK to keep install size and download time small.
     androidResources {

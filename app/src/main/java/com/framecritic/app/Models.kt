@@ -11,7 +11,43 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.DigestInputStream
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.coroutines.coroutineContext
+
+/** 단계별 방어에서 쓰는 중립값. 어떤 경로에서도 이 값으로 결과를 완성한다. */
+object Neutral {
+    const val AESTHETIC=5.5
+    const val TECHNICAL=5.0
+    const val DEVIATION=1.0
+    fun nima():NimaResult=NimaResult(AESTHETIC,TECHNICAL,DEVIATION,List(10){.1f})
+    fun metrics(width:Int,height:Int,clip:Bitmap?):Metrics=Metrics(
+        histogram=List(256){0},highlights=0.0,shadows=0.0,luminance=128.0,
+        contrast=0.0,localContrast=0.0,sharpness=0.0,rgb=listOf(128.0,128.0,128.0),
+        hues=List(12){0},lines=emptyList(),clipMap=clip,saturation=0.0,edges=0.0
+    )
+}
+
+/**
+ * 분석 중 진행 단계를 파일에 남긴다. 앱이 예외 없이 강제 종료되면(네이티브 오류·시스템 메모리 정리)
+ * 남은 기록으로 다음 실행에서 어느 단계였는지 확인할 수 있다. 정상 종료 시 파일을 지운다.
+ */
+object StageLog {
+    private const val NAME="stage.txt"
+    private fun file(context:Context)=File(context.filesDir,NAME)
+    fun write(context:Context,stage:String){
+        runCatching{
+            val stamp=SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US).format(Date())
+            file(context).writeText("$stamp\n진행 단계: $stage")
+        }
+    }
+    fun read(context:Context):String?=runCatching{
+        val f=file(context)
+        if(!f.exists()||f.length()==0L)null else f.readText().take(2_000).trim().ifBlank{null}
+    }.getOrNull()
+    fun clear(context:Context){runCatching{file(context).delete()}}
+}
 
 object ModelStore {
     /** Only the small TFLite models are needed now: the .gguf language/vision weights are never loaded. */
@@ -48,20 +84,45 @@ object Nima {
         val sum=finite.sum()
         return if(sum>0f) FloatArray(10){finite[it]/sum} else FloatArray(10){.1f}
     }
-    fun analyze(folder:File,bitmap:Bitmap):NimaResult {
-        val scaled=Bitmap.createScaledBitmap(bitmap,224,224,true)
-        val pixels=IntArray(224*224);scaled.getPixels(pixels,0,224,0,0,224,224)
-        val buffer=ByteBuffer.allocateDirect(224*224*3*4).order(ByteOrder.nativeOrder())
-        for(p in pixels){buffer.putFloat(((p shr 16)and 255)/127.5f-1);buffer.putFloat(((p shr 8)and 255)/127.5f-1);buffer.putFloat((p and 255)/127.5f-1)}
-        if(scaled!==bitmap)scaled.recycle()
-        fun infer(name:String):FloatArray=Interpreter(File(folder,name),Interpreter.Options().setNumThreads(4)).use { interpreter->
-            check(interpreter.getInputTensor(0).shape().contentEquals(intArrayOf(1,224,224,3)))
-            check(interpreter.getOutputTensor(0).numElements()==10)
-            buffer.rewind();val output=ByteBuffer.allocateDirect(40).order(ByteOrder.nativeOrder())
-            interpreter.run(buffer,output);output.rewind();FloatArray(10){output.float}
+    private fun infer(folder:File,name:String,buffer:ByteBuffer):FloatArray?=try {
+        Interpreter(File(folder,name),Interpreter.Options().setNumThreads(4)).use { interpreter->
+            if(interpreter.getOutputTensor(0).numElements()!=10) null
+            else {
+                buffer.rewind();val output=ByteBuffer.allocateDirect(40).order(ByteOrder.nativeOrder())
+                interpreter.run(buffer,output);output.rewind();FloatArray(10){output.float}
+            }
         }
-        val a=normalised(infer("nima_aesthetic.tflite"));val t=normalised(infer("nima_technical.tflite"))
-        val (mean,sd)=Scoring.distribution(a)
-        return NimaResult(mean,Scoring.distribution(t).first,sd,a.toList())
+    } catch(e:Throwable) {
+        null
+    }
+    /**
+     * 두 모델 중 하나만 실행되어도 결과를 만든다. 둘 다 실패하면 null을 돌려주고
+     * 호출부(Pipeline)가 중립 점수로 대체한다.
+     */
+    fun analyze(folder:File,bitmap:Bitmap):NimaResult? {
+        val scaled=runCatching{Bitmap.createScaledBitmap(bitmap,224,224,true)}.getOrNull()?:return null
+        try {
+            val pixels=IntArray(224*224)
+            if(!runCatching{scaled.getPixels(pixels,0,224,0,0,224,224)}.isSuccess) return null
+            val buffer=ByteBuffer.allocateDirect(224*224*3*4).order(ByteOrder.nativeOrder())
+            for(p in pixels){buffer.putFloat(((p shr 16)and 255)/127.5f-1);buffer.putFloat(((p shr 8)and 255)/127.5f-1);buffer.putFloat((p and 255)/127.5f-1)}
+            val aesthetic=infer(folder,"nima_aesthetic.tflite",buffer)?.let{normalised(it)}
+            val technical=infer(folder,"nima_technical.tflite",buffer)?.let{normalised(it)}
+            val a=aesthetic?:technical?:return null
+            val t=technical?:a
+            val mean=runCatching{Scoring.distribution(a).first}.getOrNull()?:Neutral.AESTHETIC
+            val technicalMean=runCatching{Scoring.distribution(t).first}.getOrNull()?:Neutral.TECHNICAL
+            val deviation=runCatching{Scoring.distribution(a).second}.getOrNull()?:Neutral.DEVIATION
+            return NimaResult(
+                mean.takeIf{it.isFinite()}?.coerceIn(1.0,10.0)?:Neutral.AESTHETIC,
+                technicalMean.takeIf{it.isFinite()}?.coerceIn(1.0,10.0)?:Neutral.TECHNICAL,
+                deviation.takeIf{it.isFinite()}?.coerceIn(0.0,4.5)?:Neutral.DEVIATION,
+                a.toList()
+            )
+        } catch(e:Throwable) {
+            return null
+        } finally {
+            if(scaled!==bitmap) runCatching{scaled.recycle()}
+        }
     }
 }

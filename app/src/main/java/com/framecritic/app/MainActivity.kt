@@ -52,6 +52,15 @@ import kotlin.math.roundToInt
 private val Ink=Color(0xFFECECE7)
 private val Accent=Color(0xFFC4DAA8)
 
+/** 릴리스 태그(offline-v2-N)의 N과 맞추는 빌드 번호. 화면 상단에 표시해 설치된 APK를 확인한다. */
+const val BUILD_NUMBER=61
+
+/** 화면과 오류 기록에 쓰는 버전 표기. */
+fun appVersion(context:Context):String {
+    val info=runCatching{context.packageManager.getPackageInfo(context.packageName,0)}.getOrNull()
+    return "v${info?.versionName?:"2.0.1"} (Build $BUILD_NUMBER)"
+}
+
 /** 전역 비정상 종료 로거. 스택 트레이스를 파일에 남기고 다음 실행에서 보여준 뒤 지운다. */
 object CrashLog {
     private const val NAME="crash.txt"
@@ -93,22 +102,38 @@ class MainActivity:ComponentActivity(){
         super.onCreate(savedInstanceState)
         CrashLog.install(this)
         val previousCrash=CrashLog.read(this)
+        val interruptedStage=StageLog.read(this)
+        val version=appVersion(this)
         setContent{
             var crash by remember{mutableStateOf(previousCrash)}
+            var stage by remember{mutableStateOf(interruptedStage)}
             MaterialTheme(colorScheme=darkColorScheme(primary=Accent,background=Color(0xFF101110),surface=Color(0xFF1C1E1C),onSurface=Ink,onBackground=Ink)){
-                Surface(Modifier.fillMaxSize()){CriticScreen()}
+                Surface(Modifier.fillMaxSize()){CriticScreen(version)}
             }
-            crash?.let{record->CrashDialog(record){CrashLog.clear(this);crash=null}}
+            crash?.let{record->CrashDialog("이전 실행에서 앱이 종료되었습니다",record,"아래 기록을 복사해 보내주시면 종료 원인을 바로 확인할 수 있습니다."){CrashLog.clear(this);crash=null}}
+            stage?.let{record->CrashDialog("직전 분석이 도중에 끊겼습니다",record,"예외 기록 없이 프로세스가 종료되었습니다(네이티브 오류 또는 시스템 메모리 정리). 어느 단계였는지 아래에 남아 있습니다."){StageLog.clear(this);stage=null}}
         }
     }
 }
-@Composable fun CrashDialog(record:String,onClose:()->Unit){
-    AlertDialog(onDismissRequest=onClose,title={Text("이전 실행에서 앱이 종료되었습니다")},
+@Composable fun CrashDialog(title:String,record:String,hint:String,onClose:()->Unit){
+    val context=LocalContext.current
+    AlertDialog(onDismissRequest=onClose,title={Text(title)},
         text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())){
-            Text("아래 기록을 복사해 보내주시면 종료 원인을 바로 확인할 수 있습니다.",fontSize=12.sp,color=Color.Gray)
+            Text(hint,fontSize=12.sp,color=Color.Gray)
             Text(record,fontSize=11.sp)
         }},
-        confirmButton={TextButton(onClick=onClose){Text("닫기")}})
+        confirmButton={
+            Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){
+                TextButton(onClick={
+                    runCatching{
+                        val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("FrameCritic",record))
+                    }
+                    Toast.makeText(context,"기록을 클립보드에 복사했습니다",Toast.LENGTH_SHORT).show()
+                }){Text("클립보드 복사")}
+                TextButton(onClick=onClose){Text("닫기")}
+            }
+        })
 }
 @Composable fun <T> Choice(title:String,items:List<T>,selected:T,label:(T)->String,enabled:Boolean,onSelect:(T)->Unit){
     Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
@@ -118,7 +143,7 @@ class MainActivity:ComponentActivity(){
     }
 }
 }
-@Composable fun CriticScreen(vm:CriticViewModel=viewModel()){
+@Composable fun CriticScreen(version:String="",vm:CriticViewModel=viewModel()){
     val s by vm.state.collectAsStateWithLifecycle();val context=LocalContext.current
     val view=LocalView.current
     DisposableEffect(s.busy){view.keepScreenOn=s.busy;onDispose{view.keepScreenOn=false}}
@@ -126,7 +151,7 @@ class MainActivity:ComponentActivity(){
     val scope=rememberCoroutineScope();var sharing by remember{mutableStateOf(false)};var info by remember{mutableStateOf(false)}
     Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
-            Column{Text("FRAMECRITIC",fontSize=24.sp,fontWeight=FontWeight.Medium,letterSpacing=2.sp);Text("사진을 보고, 근거를 읽다",fontSize=12.sp,color=Color.Gray)}
+            Column{Text("FRAMECRITIC",fontSize=24.sp,fontWeight=FontWeight.Medium,letterSpacing=2.sp);Text("$version · 사진을 보고, 근거를 읽다",fontSize=12.sp,color=Color.Gray)}
             TextButton(onClick={info=true}){Text("모델 정보")}
         }
         if(s.bitmap==null){
@@ -210,6 +235,7 @@ class MainActivity:ComponentActivity(){
         Spacer(Modifier.height(16.dp))
     }
     if(info)AlertDialog(onDismissRequest={info=false},confirmButton={TextButton(onClick={info=false}){Text("닫기")}},title={Text("내장 모델 · 오프라인")},text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())){
+        Text("앱 $version · 측정 기반 오프라인 크리틱",fontSize=13.sp,color=MaterialTheme.colorScheme.primary)
         Text("NIMA MobileNet · AVA / TID2013 미적·기술 분포\nEfficientDet-Lite0 · MediaPipe 피사체 탐지\nOpenCV 4.12 · 영상 측정\nFrameCritic 측정 크리틱 엔진 · 기기 내 결정론적 문장 생성\n\n내장 모델 약 17MB. 최초 실행 시 TFLite 모델 3개만 앱 전용 공간으로 복사합니다. 외부 추론 프로세스나 인터넷 다운로드가 없고, 사진을 외부로 보내지 않습니다.\n\n비평 문장은 측정값에서 규칙으로 생성합니다. 같은 사진과 같은 옵션이면 같은 결과가 나오며, 측정되지 않은 피사체·의도·감정을 사실처럼 추가하지 않습니다. 시각적 주목도 모델은 포함하지 않았습니다.\n\n가중치·OpenCV·MediaPipe: Apache 2.0 (NIMA는 배포자 표기 기준). 출처와 전문은 아래와 프로젝트 docs에 포함됩니다.",fontSize=13.sp)
         val notices=remember{context.assets.open("THIRD_PARTY_NOTICES.md").bufferedReader().use{it.readText()}}
         Text(notices,fontSize=11.sp)
@@ -250,13 +276,17 @@ private fun safeFormat(template:String,vararg args:Any?):String=runCatching{Stri
             val x=(if(size.width>0f)pos.x/size.width else 0f).let{if(it.isFinite())it.coerceIn(0f,1f) else 0f}
             val y=(if(size.height>0f)pos.y/size.height else 0f).let{if(it.isFinite())it.coerceIn(0f,1f) else 0f}
             val subject=if(subjects)analysis?.subjects?.firstOrNull{it.box.contains(x,y)}else null
-            val clip=if(clips)analysis?.metrics?.clipMap?.getPixel((x*(bitmap.width-1)).toInt(),(y*(bitmap.height-1)).toInt())else null
+            val clip=if(clips)analysis?.metrics?.clipMap?.let{map->
+                val px=(x*(bitmap.width-1)).toInt().coerceIn(0,map.width-1)
+                val py=(y*(bitmap.height-1)).toInt().coerceIn(0,map.height-1)
+                runCatching{map.getPixel(px,py)}.getOrNull()
+            }else null
             detail=when{subject!=null->"${subject.label} · 신뢰도 ${roundSafe(subject.confidence*100.0)}%\n중심 (${roundSafe(subject.box.centerX()*100.0)}%, ${roundSafe(subject.box.centerY()*100.0)}%) · 프레임 ${roundSafe(subject.box.width()*subject.box.height()*100.0)}%\n${report?.sections?.get("구도").orEmpty()}\n구도 비평은 사진 전체에 대한 해석입니다."
                 clip!=null&&clip!=0->"선택 영역: ${if((clip and 0x00FF0000)!=0)"하이라이트" else "암부"} 극단값\n${report?.sections?.get("노출").orEmpty()}\n클리핑 여부만으로 결함을 확정하지 않습니다."
                 else->"${report?.sections?.get("구도")?:"선택 영역에 연결된 탐지 근거가 없습니다."}\n직선 표시는 수평선 후보이며 실제 지평선으로 확정하지 않습니다."}
         }}){
             Image(bitmap.asImageBitmap(),contentDescription="분석 대상 사진",modifier=Modifier.fillMaxSize(),contentScale=ContentScale.FillBounds)
-            if(clips&&analysis!=null)Image(analysis.metrics.clipMap.asImageBitmap(),contentDescription="빨강: 하이라이트, 파랑: 암부",modifier=Modifier.fillMaxSize(),contentScale=ContentScale.FillBounds)
+            if(clips&&analysis!=null)analysis.metrics.clipMap?.let{Image(it.asImageBitmap(),contentDescription="빨강: 하이라이트, 파랑: 암부",modifier=Modifier.fillMaxSize(),contentScale=ContentScale.FillBounds)}
             Canvas(Modifier.matchParentSize()){
                 runCatching{
                     if(!size.width.isFinite()||!size.height.isFinite()||size.width<=0f||size.height<=0f) return@runCatching

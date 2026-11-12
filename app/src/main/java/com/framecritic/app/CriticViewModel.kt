@@ -18,7 +18,10 @@ data class ScreenState(val bitmap:Bitmap?=null,val analysis:Analysis?=null,val r
 class CriticViewModel(app:Application):AndroidViewModel(app) {
     private val mutable=MutableStateFlow(ScreenState());val state=mutable.asStateFlow()
     private var job:Job?=null;private var folder:File?=null
-    private fun progress(s:String){mutable.update{it.copy(progress=s)}}
+    /** 분석 중에만 진행 단계를 파일에 남긴다. 강제 종료되면 다음 실행에서 그 기록을 보여준다. */
+    private var tracking=false
+    private fun progress(s:String){if(tracking)StageLog.write(getApplication<Application>(),s);mutable.update{it.copy(progress=s)}}
+    private fun stageName()=mutable.value.progress.ifBlank{"준비"}
     fun setOptions(p:Persona?=null,l:Level?=null,t:Tone?=null,d:Depth?=null){if(mutable.value.busy)return;mutable.update{it.copy(persona=p?:it.persona,level=l?:it.level,tone=t?:it.tone,depth=d?:it.depth,report=null)}}
     fun cancel(){job?.cancel()}
     fun load(uri:Uri) {
@@ -40,9 +43,11 @@ class CriticViewModel(app:Application):AndroidViewModel(app) {
     fun analyze() {
         val selected=mutable.value;if(selected.busy||selected.bitmap==null)return
         job=viewModelScope.launch(Dispatchers.IO) {
+            val context=getApplication<Application>()
+            tracking=true
+            StageLog.write(context,"분석 준비")
             mutable.update{it.copy(busy=true,error=null,report=null)}
             try {
-                val context=getApplication<Application>()
                 val a=selected.analysis?:run{
                     progress("내장 모델 확인")
                     val models=folder?:ModelStore.prepare(context,::progress).also{folder=it}
@@ -53,9 +58,9 @@ class CriticViewModel(app:Application):AndroidViewModel(app) {
                 // 분석과 리포트를 한 번에 반영한다. 둘 사이의 반쪽 상태로 화면이 그려지던 경로를 없앤다.
                 mutable.update{it.copy(analysis=a,report=report)}
             }catch(e:CancellationException){mutable.update{it.copy(error="분석을 취소했습니다.")};throw e}
-            catch(e:OutOfMemoryError){mutable.update{it.copy(error="메모리가 부족합니다. 다른 앱을 닫고 다시 시도하세요.")}}
-            catch(e:Throwable){mutable.update{it.copy(error=e.message?:"분석 실패")}}
-            finally{mutable.update{it.copy(busy=false,progress="")}}
+            catch(e:OutOfMemoryError){mutable.update{it.copy(error="메모리가 부족합니다(${stageName()} 단계). 다른 앱을 닫고 다시 시도하세요.")}}
+            catch(e:Throwable){mutable.update{it.copy(error="분석 실패(${stageName()} 단계): ${e.message?:"원인 미상"}")}}
+            finally{tracking=false;StageLog.clear(context);mutable.update{it.copy(busy=false,progress="")}}
         }
     }
 }
