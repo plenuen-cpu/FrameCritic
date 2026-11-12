@@ -20,7 +20,12 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
     packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/libframecritic-server.so" } }
-    androidResources { noCompress += listOf("gguf", "tflite") }
+    // The critic engine is measurement-only: the GGUF language/vision weights are no longer loaded,
+    // so they are kept out of the APK to keep install size and download time small.
+    androidResources {
+        noCompress += listOf("gguf", "tflite")
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!*.gguf"
+    }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

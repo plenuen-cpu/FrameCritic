@@ -14,16 +14,20 @@ import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
 
 object ModelStore {
+    /** Only the small TFLite models are needed now: the .gguf language/vision weights are never loaded. */
     suspend fun prepare(context:Context,onProgress:(String)->Unit):File {
         val folder=File(context.noBackupFilesDir,"models-v2").apply{mkdirs()}
-        val list=JSONArray(context.assets.open("models/manifest.json").bufferedReader().use{it.readText()})
-        for (i in 0 until list.length()) {
+        val manifest=JSONArray(context.assets.open("models/manifest.json").bufferedReader().use{it.readText()})
+        val entries=(0 until manifest.length()).map{manifest.getJSONObject(it)}.filterNot{it.getString("name").endsWith(".gguf")}
+        var index=0
+        for (entry in entries) {
             coroutineContext.ensureActive()
-            val entry=list.getJSONObject(i);val name=entry.getString("name");val size=entry.getLong("size")
+            index++
+            val name=entry.getString("name");val size=entry.getLong("size")
             val file=File(folder,name);val sha=entry.getString("sha256")
-            onProgress("내장 모델 확인 ${i+1}/${list.length()} · $name")
+            onProgress("내장 모델 확인 $index/${entries.size} · $name")
             if(file.exists() && file.length()==size) continue
-            check(StatFs(folder.path).availableBytes>size+64*1024*1024) { "내장 모델을 준비할 저장 공간이 부족합니다. 약 1.8GB의 여유 공간을 확보하세요." }
+            check(StatFs(folder.path).availableBytes>size+32*1024*1024) { "내장 모델을 준비할 저장 공간이 부족합니다. 약 20MB의 여유 공간을 확보하세요." }
             val tmp=File(folder,"$name.part")
             try {
                 val md=MessageDigest.getInstance("SHA-256")
@@ -37,7 +41,6 @@ object ModelStore {
         return folder
     }
 }
-data class NimaResult(val aesthetic:Double,val technical:Double,val deviation:Double,val probabilities:List<Float>)
 object Nima {
     fun analyze(folder:File,bitmap:Bitmap):NimaResult {
         val scaled=Bitmap.createScaledBitmap(bitmap,224,224,true)

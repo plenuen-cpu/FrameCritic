@@ -1,24 +1,45 @@
 package com.framecritic.app
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.runner.RunWith
+import java.io.File
 @RunWith(AndroidJUnit4::class)
 class OfflineDeviceTest {
     @Test fun bundledModelsNimaOpenCvAndMediaPipe()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val folder=ModelStore.prepare(context){}
-        val b=Bitmap.createBitmap(320,320,Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.GRAY)}
+        val b=Bitmap.createBitmap(320,320,Bitmap.Config.ARGB_8888).apply{eraseColor(Color.GRAY)}
         try{val n=Nima.analyze(folder,b);assertTrue(n.aesthetic in 1.0..10.0);val m=Vision.metrics(b);assertEquals(0.0,m.sharpness,1e-5);Vision.subjects(context,folder,b)}finally{b.recycle()}
     }
-    @Test fun realVlmAndKoreanGeneration()=runBlocking {
+    @Test fun prepareSkipsLargeLanguageWeights()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val folder=ModelStore.prepare(context){}
-        val b=Bitmap.createBitmap(384,384,Bitmap.Config.ARGB_8888)
-        val c=android.graphics.Canvas(b);c.drawColor(android.graphics.Color.WHITE);c.drawCircle(192f,192f,110f,android.graphics.Paint().apply{color=android.graphics.Color.RED})
-        try{val a=Pipeline.analyze(context,folder,b){};assertNotNull(a.scene);val r=Pipeline.report(context,folder,a,Persona.LEITER,Level.BALANCED,Tone.ANALYST,Depth.QUICK){};assertNull(r.failure);assertTrue(r.sections.isNotEmpty())}finally{b.recycle()}
+        assertTrue(File(folder,"nima_aesthetic.tflite").isFile)
+        assertTrue(File(folder,"nima_technical.tflite").isFile)
+        assertTrue(File(folder,"objects.tflite").isFile)
+        assertFalse(File(folder,"vision.gguf").exists())
+        assertFalse(File(folder,"korean.gguf").exists())
+    }
+    @Test fun offlineMeasurementCriticProducesKoreanReport()=runBlocking {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val folder=ModelStore.prepare(context){}
+        val b=Bitmap.createBitmap(640,480,Bitmap.Config.ARGB_8888)
+        val c=Canvas(b);c.drawColor(Color.rgb(28,36,52));c.drawCircle(220f,250f,90f,Paint().apply{color=Color.rgb(214,176,120)})
+        try{
+            val a=Pipeline.analyze(context,folder,b){}
+            assertEquals(Axis.entries.size,a.assessment.evidence.size)
+            val r=Pipeline.report(a,Persona.LEITER,Level.BALANCED,Tone.ANALYST,Depth.QUICK)
+            assertNull(r.failure)
+            assertEquals(11,r.sections.size)
+            assertNotNull(r.score)
+            assertTrue(r.sections.values.all{it.count{ch->ch in '가'..'힣'}>=3})
+        }finally{b.recycle()}
     }
 }

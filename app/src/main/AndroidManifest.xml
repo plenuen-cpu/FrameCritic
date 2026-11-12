@@ -1,6 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Required only for the authenticated loopback inference process. No remote APIs. -->
-    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Fully offline: no INTERNET permission, no server process, no telemetry. -->
     <application android:theme="@android:style/Theme.Material.NoActionBar" android:label="FrameCritic"
         android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false" android:extractNativeLibs="true" android:largeHeap="true"

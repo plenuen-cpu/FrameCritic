@@ -2,11 +2,11 @@
 
 | Candidate | Fit for this build | Korean / image understanding | Memory and speed | Distribution |
 |---|---|---|---|---|
-| SmolVLM2-500M | Selected; official ggml-org Q8 GGUF + projector; llama.cpp ARM64 CPU | English-focused according to original card; supplies visual evidence, not dependable Korean prose | Weights 546 MB; Android peak RAM and throughput unmeasured | Apache-2.0 |
+| SmolVLM2-500M | Used through build 57; pinned but not loaded from build 58 + projector; llama.cpp ARM64 CPU | English-focused according to original card; supplies visual evidence, not dependable Korean prose | Weights 546 MB; Android peak RAM and throughput unmeasured | Apache-2.0 |
 | Gemma 3n E2B | Not embedded | Multilingual multimodal candidate; no comparative Korean benchmark performed | Official LiteRT preview .task ~3.14GB, larger than selected pipeline; no device benchmark performed | Gemma terms; gated download requires account acceptance |
 | Qwen2.5-VL-3B | Not embedded | Larger multilingual visual model; no comparative Korean benchmark performed | More weights / working memory; no device benchmark performed | 3B revision checked uses Qwen Research License, commercial use requires separate license |
 
-Qwen2.5-1.5B Q4_K_M (1,117 MB, Apache-2.0) is additionally embedded as a **text-only Korean writer**. It receives only SmolVLM evidence and measured data, not the image. This is a practical language bridge, not a guarantee of expert Korean criticism. Both models are sequential CPU processes.
+Qwen2.5-1.5B Q4_K_M (1,117 MB, Apache-2.0) was used as a text-only Korean writer in build 57 and earlier. From build 58 the app does not load either GGUF model: the Korean report is composed by the deterministic measurement engine, so the vision/language weights are excluded from the APK and the app never starts a native inference server. The pinned files remain listed in `app/src/main/assets/models/manifest.json` and are still downloaded in CI to run the host verification of `libframecritic-server.so`; they are not needed for the application to work.
 
 Sources:
 - https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct
@@ -19,7 +19,7 @@ Sources:
 - https://ai.google.dev/edge/mediapipe/solutions/vision/object_detector
 - https://github.com/ggml-org/llama.cpp
 
-Exact weight URLs, sizes, revision hashes and SHA-256 digests: `app/src/main/assets/models/manifest.json`. CI fails if a required model is missing or mismatched. The source-with-models ZIP includes all weights and notices.
+Exact weight URLs, sizes, revision hashes and SHA-256 digests: `app/src/main/assets/models/manifest.json`. CI fails if a packaged TFLite model is missing or mismatched. The source-with-models ZIP includes all weights and notices.
 
 NIMA conversion: community MobileNet AVA and TID2013 fp16 TFLite, 6.45MB each, float32 input/output. Publisher reports conversion parity; this project independently verifies tensor shape, finite normalized distributions and image-dependent inference. It does not recreate upstream training or independently establish dataset image rights. Apache-2.0 metadata is the publisher's declaration. Upstream source code license and conversion model card are bundled, with original attribution. No additional conversion is necessary.
 

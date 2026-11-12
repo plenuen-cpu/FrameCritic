@@ -37,16 +37,19 @@ class CriticViewModel(app:Application):AndroidViewModel(app) {
             }catch(e:CancellationException){throw e}catch(e:OutOfMemoryError){mutable.update{it.copy(error="사진을 열 메모리가 부족합니다.")}}catch(e:Exception){mutable.update{it.copy(error=e.message)}}finally{mutable.update{it.copy(busy=false,progress="")}}
         }
     }
-    fun analyze(retryVision:Boolean=false) {
+    fun analyze() {
         val selected=mutable.value;if(selected.busy||selected.bitmap==null)return
         job=viewModelScope.launch(Dispatchers.IO) {
             mutable.update{it.copy(busy=true,error=null,report=null)}
             try {
                 val context=getApplication<Application>()
-                val models=folder?:ModelStore.prepare(context,::progress).also{folder=it}
-                val analysis=if(retryVision)null else selected.analysis
-                val a=analysis?:Pipeline.analyze(context,models,selected.bitmap,::progress).also{result->mutable.update{it.copy(analysis=result)}}
-                val report=Pipeline.report(context,models,a,selected.persona,selected.level,selected.tone,selected.depth,::progress)
+                val a=selected.analysis?:run{
+                    progress("내장 모델 확인")
+                    val models=folder?:ModelStore.prepare(context,::progress).also{folder=it}
+                    Pipeline.analyze(context,models,selected.bitmap,::progress).also{result->mutable.update{it.copy(analysis=result)}}
+                }
+                progress("측정 근거로 비평 작성")
+                val report=Pipeline.report(a,selected.persona,selected.level,selected.tone,selected.depth)
                 mutable.update{it.copy(report=report)}
             }catch(e:CancellationException){mutable.update{it.copy(error="분석을 취소했습니다.")};throw e}
             catch(e:OutOfMemoryError){mutable.update{it.copy(error="메모리가 부족합니다. 다른 앱을 닫고 다시 시도하세요.")}}

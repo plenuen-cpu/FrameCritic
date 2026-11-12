@@ -111,9 +111,9 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
             s.report?.let{report->
                 report.score?.let{score->
                     Text("점수 산정",fontWeight=FontWeight.Medium)
-                    Text("NIMA 40% + 사진가 관점 60%. 사진가 관점은 항목 가중치 × VLM 신뢰도로 정규화합니다.\n엄격도 보정: 1 + 9 × x^γ (x는 0~1 기본점수, γ는 Generous 0.75 / Balanced 1 / Strict 1.5).",fontSize=12.sp,color=Color.Gray)
+                    Text("NIMA 40% + 사진가 관점 60%. 사진가 관점은 항목 가중치 × 측정 근거 신뢰도로 정규화합니다.\n엄격도 보정: 1 + 9 × x^γ (x는 0~1 기본점수, γ는 Generous 0.75 / Balanced 1 / Strict 1.5).",fontSize=12.sp,color=Color.Gray)
                     Text("관점 점수 %.2f · 보정 전 %.2f → %.2f\n가중 신뢰도 %.0f%% · 경험적 평가 함수이며 인간 심사위원 점수로 검증된 척도가 아닙니다.".format(score.weighted,score.base,score.adjusted,score.coverage*100),fontSize=12.sp)
-                    a.scene?.let{scene->
+                    a.assessment.let{scene->
                         val important=score.contributions.indices.sortedByDescending{score.contributions[it]}.take(3)
                         Text("이 관점의 점수에 크게 기여한 항목: "+important.joinToString{Axis.entries[it].title}+". 다른 관점은 같은 사진 근거에 다른 가중치를 적용합니다.",fontSize=12.sp)
                         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(16.dp)){
@@ -121,7 +121,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
                         }
                         Persona.entries.forEach{p->val other=runCatching{Scoring.evaluate(a.nima.aesthetic,scene.evidence,p,report.level)}.getOrNull();Text("${p.title}: ${other?.adjusted?.let{"%.2f".format(it)}?:"신뢰도 부족"}",fontSize=12.sp,color=Color.Gray)}
                         Axis.entries.forEachIndexed{i,axis->
-                            Text("${axis.title} · 가중치 ${(report.persona.weights[i]*100).roundToInt()}% · VLM ${"%.2f".format(scene.evidence[i].score)} · 신뢰도 ${(scene.evidence[i].confidence*100).roundToInt()}%",fontSize=11.sp,color=Color.Gray)
+                            Text("${axis.title} · 가중치 ${(report.persona.weights[i]*100).roundToInt()}% · 근거 ${"%.2f".format(scene.evidence[i].score)} · 신뢰도 ${(scene.evidence[i].confidence*100).roundToInt()}%",fontSize=11.sp,color=Color.Gray)
                         }
                     }
                 }
@@ -136,20 +136,19 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
             Text("휘도 %.1f/255 · 하이라이트 %.2f%% · 암부 %.2f%%\n전역 대비 %.2f · 국소 대비 %.2f · Laplacian 분산 %.2f\n평균 RGB %s".format(a.metrics.luminance,a.metrics.highlights*100,a.metrics.shadows*100,a.metrics.contrast,a.metrics.localContrast,a.metrics.sharpness,a.metrics.rgb.joinToString{"%.1f".format(it)}),fontSize=13.sp,lineHeight=21.sp)
             Histogram(a.metrics.histogram)
             Text("밝기 극단값은 의도된 표현일 수 있습니다. RGB 평균으로 조명색을 확정할 수 없고, 선명도 수치는 피사체·해상도에 따라 달라집니다.",fontSize=11.sp,color=Color.Gray)
-            Text("MediaPipe 탐지 ${a.subjects.size}개 · 사진 분석 ${a.elapsedMs/1000}초",fontSize=12.sp,color=Color.Gray)
+            Text("MediaPipe 탐지 ${a.subjects.size}개 · 분석 ${if(a.elapsedMs<1000) "${a.elapsedMs}ms" else "%.1f초".format(a.elapsedMs/1000.0)}",fontSize=12.sp,color=Color.Gray)
             a.subjects.forEach{Text("${it.label} · 신뢰도 ${(it.confidence*100).roundToInt()}% · 프레임 ${(it.box.width()*it.box.height()*100).roundToInt()}%",fontSize=12.sp)}
             a.warnings.forEach{Text(it,color=MaterialTheme.colorScheme.error,fontSize=12.sp)}
-            if(a.scene==null)TextButton(onClick={vm.analyze(retryVision=true)},enabled=!s.busy){Text("사진 이해 재시도")}
-            a.scene?.let{scene->
-                var expanded by remember{mutableStateOf(false)}
-                TextButton(onClick={expanded=!expanded}){Text(if(expanded)"VLM 원문 접기" else "VLM 근거 원문 보기")}
-                if(expanded){Text(scene.description,fontSize=12.sp);Axis.entries.forEachIndexed{i,axis->Text("${axis.title}\n관찰: ${scene.evidence[i].observation}\n해석: ${scene.evidence[i].interpretation}",fontSize=12.sp)}}
+            a.assessment.let{assessment->
+                var expanded by remember(assessment){mutableStateOf(false)}
+                TextButton(onClick={expanded=!expanded}){Text(if(expanded)"근거 접기" else "측정 근거 자세히 보기")}
+                if(expanded){Text(assessment.description,fontSize=12.sp);Axis.entries.forEachIndexed{i,axis->Text("${axis.title}\n관찰: ${assessment.evidence[i].observation}\n해석: ${assessment.evidence[i].interpretation}",fontSize=12.sp)}}
             }
         }
         Spacer(Modifier.height(16.dp))
     }
     if(info)AlertDialog(onDismissRequest={info=false},confirmButton={TextButton(onClick={info=false}){Text("닫기")}},title={Text("내장 모델 · 오프라인")},text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState())){
-        Text("NIMA MobileNet · AVA / TID2013\nSmolVLM2-500M Q8 · 사진 이해\nQwen2.5-1.5B Q4_K_M · 한국어 작성\nEfficientDet-Lite0 · MediaPipe 탐지\nOpenCV 4.12 · 영상 측정\nllama.cpp · ARM64 CPU\n\n모델 약 1.68GB. 최초 실행 시 APK 내부 파일을 풀어 앱 전용 공간에 보관합니다. 인터넷 다운로드는 없습니다. 사진을 외부로 보내지 않습니다.\n\nSmolVLM2는 영어 중심 소형 모델입니다. 한국어 편집 모델을 거쳐도 오인식·번역·비평 오류가 생길 수 있습니다. 시각적 주목도 모델은 포함하지 않았습니다.\n\n가중치·OpenCV·MediaPipe: Apache 2.0 (NIMA는 배포자 표기 기준). llama.cpp: MIT. 출처와 전문은 아래와 프로젝트 docs에 포함됩니다.",fontSize=13.sp)
+        Text("NIMA MobileNet · AVA / TID2013 미적·기술 분포\nEfficientDet-Lite0 · MediaPipe 피사체 탐지\nOpenCV 4.12 · 영상 측정\nFrameCritic 측정 크리틱 엔진 · 기기 내 결정론적 문장 생성\n\n내장 모델 약 17MB. 최초 실행 시 TFLite 모델 3개만 앱 전용 공간으로 복사합니다. 외부 추론 프로세스나 인터넷 다운로드가 없고, 사진을 외부로 보내지 않습니다.\n\n비평 문장은 측정값에서 규칙으로 생성합니다. 같은 사진과 같은 옵션이면 같은 결과가 나오며, 측정되지 않은 피사체·의도·감정을 사실처럼 추가하지 않습니다. 시각적 주목도 모델은 포함하지 않았습니다.\n\n가중치·OpenCV·MediaPipe: Apache 2.0 (NIMA는 배포자 표기 기준). 출처와 전문은 아래와 프로젝트 docs에 포함됩니다.",fontSize=13.sp)
         val notices=remember{context.assets.open("THIRD_PARTY_NOTICES.md").bufferedReader().use{it.readText()}}
         Text(notices,fontSize=11.sp)
     }})
