@@ -20,11 +20,12 @@ import {
   Persona,
   PersonaKey,
   ScoreResult,
+  SubjectCategory,
   SubjectScene,
   ToneKey,
   evaluate,
 } from './domain'
-import { KO_LABELS, buildVoice } from './subject'
+import { KO_LABELS, buildVoice, josa } from './subject'
 
 export interface LineCandidate {
   angle: number
@@ -2058,6 +2059,98 @@ export function verdict(a: Assessment, s10: number): string {
               ? '가능성이 보이는 한 장'
               : '다듬을 여지가 큰 한 장'
   return `${flavour}, ${quality}`
+}
+
+/** 점수대에 따른 짧은 완결도 문장. 요약 카드의 한 줄 총평 뒤에 붙는다. */
+function qualityLine(s10: number): string {
+  if (s10 >= 9) return '흠을 찾기 어려운 한 장입니다.'
+  if (s10 >= 8.2) return '완성도가 높은 한 장입니다.'
+  if (s10 >= 7.4) return '균형이 좋은 한 장입니다.'
+  if (s10 >= 6.6) return '안정적으로 정리된 한 장입니다.'
+  if (s10 >= 5.8) return '가능성이 보이는 한 장입니다.'
+  return '다듬을 여지가 큰 한 장입니다.'
+}
+
+/** 피사체를 한 줄 총평의 앞자리로 데려온다. 화면에서 확인한 것만 말한다. */
+function subjectLead(scene: SubjectScene | null): string {
+  if (!scene) return ''
+  switch (scene.category) {
+    case SubjectCategory.PERSON:
+      if (scene.count >= 3) return '여러 사람이 어우러진 장면이 화면의 중심을 잡고, '
+      if (scene.count === 2) return '두 사람이 나란히 선 장면이 화면의 중심을 잡고, '
+      return '한 사람의 얼굴과 시선이 화면의 중심을 잡고, '
+    case SubjectCategory.ANIMAL:
+      return scene.count >= 2
+        ? `${scene.subject} 여러 마리가 화면의 중심을 잡고, `
+        : `${josa(scene.subject, '이', '가')} 화면의 중심에서 시선을 붙잡고, `
+    case SubjectCategory.VEHICLE:
+      return `${scene.subject}의 형태가 화면의 중심을 잡고, `
+    case SubjectCategory.LANDSCAPE_WATER:
+      return `${scene.subject}의 넓이가 화면을 채우고, `
+    case SubjectCategory.LANDSCAPE_NATURE:
+      return `${scene.subject}의 결이 화면을 채우고, `
+    case SubjectCategory.URBAN_ARCHITECTURE:
+      return '도시의 선이 화면을 나누고, '
+    case SubjectCategory.OBJECT_STILL:
+      return `${josa(scene.subject, '이', '가')} 놓인 자리가 화면의 중심을 잡고, `
+    default:
+      return ''
+  }
+}
+
+/** 여러 문장 중 첫 문장만 남긴다. */
+function firstSentence(text: string): string {
+  const trimmed = (text ?? '').trim()
+  if (!trimmed) return ''
+  const index = trimmed.indexOf('. ')
+  const head = index > 0 ? trimmed.slice(0, index + 1) : trimmed
+  return head.endsWith('.') ? head : `${head}.`
+}
+
+/** 결과 화면의 '한눈에 보는 핵심 요약'. 긴 열 항목을 읽지 않아도 되게 세 줄로 줄인다. */
+export interface QuickSummary {
+  /** 사진의 중심 인상과 완결도를 짚는 한 문장. */
+  headline: string
+  /** 가장 돋보이는 점 한 문장. */
+  strength: string
+  /** 바로 적용할 촬영·보정 팁 한 문장. */
+  advice: string
+}
+
+export function quickSummary(a: Assessment, s10: number, options: SectionOptions): QuickSummary {
+  try {
+    return buildQuickSummary(a, s10, options)
+  } catch {
+    return {
+      headline: qualityLine(s10),
+      strength: '화면에서 확인한 빛과 색, 구도가 서로를 받쳐 주고 있습니다.',
+      advice: '같은 장면을 한 걸음 옮겨 한 장 더 담아 보십시오.',
+    }
+  }
+}
+
+function buildQuickSummary(a: Assessment, s10: number, options: SectionOptions): QuickSummary {
+  const { persona, tone } = options
+  const seed = seedOf(a.measure)
+  const ranked = AXIS_ORDER.slice().sort((x, y) => {
+    if (a.evidence[y].score !== a.evidence[x].score) return a.evidence[y].score - a.evidence[x].score
+    return persona.weights[y] - persona.weights[x]
+  })
+  const weak = ranked.slice(-2).reverse()
+  const voice = buildVoice(a.scene, seed)
+  const lead = subjectLead(a.scene)
+  const headline = lead ? `${lead}${qualityLine(s10)}` : `사진 전체의 인상은 ${qualityLine(s10)}`
+  const strength =
+    band(a.evidence[ranked[0]].score) >= 2
+      ? firstSentence(highlight(ranked[0], a, seed))
+      : voice?.praise || firstSentence(highlight(ranked[0], a, seed))
+  const advice =
+    voice?.shoot || firstSentence(shootAdvice(weak[0], a, tone)) || '같은 장면을 한 걸음 옮겨 한 장 더 담아 보십시오.'
+  return {
+    headline,
+    strength: strength || '화면에서 확인한 빛과 색, 구도가 서로를 받쳐 주고 있습니다.',
+    advice,
+  }
 }
 
 function openingFor(s10: number): string {

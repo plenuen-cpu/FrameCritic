@@ -12,7 +12,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --port 4173",
-    "check": "node scripts/contract-check.cjs"
+    "precheck": "tsc src/lib/domain.ts src/lib/critic-engine.ts src/lib/analyzer.ts src/lib/subject.ts --outDir .verify --module commonjs --target es2020 --moduleResolution node --skipLibCheck && node -e \"require('fs').writeFileSync('.verify/package.json','{\\\"type\\\":\\\"commonjs\\\"}')\"",
+    "check": "node scripts/contract-check.cjs && node scripts/subject-check.cjs"
   },
   "dependencies": {
     "@litertjs/core": "^2.6.0",

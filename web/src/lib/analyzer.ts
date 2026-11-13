@@ -530,9 +530,14 @@ export async function analyzeImage(image: HTMLImageElement | ImageBitmap): Promi
   const [inference, vision] = await Promise.all([inferNima(image), detectSubjects(image)])
 
   const detected = vision?.detections ?? []
+  // 주인공 상자는 주인공을 고르는 기준(subject.ts의 무게중심)과 같이 고른다.
   const primary = detected
     .slice()
-    .sort((a, b) => b.score * Math.sqrt(b.w * b.h) - a.score * Math.sqrt(a.w * a.h))[0]
+    .sort(
+      (a, b) =>
+        Math.pow(b.score, 1.5) * Math.sqrt(b.w * b.h) -
+        Math.pow(a.score, 1.5) * Math.sqrt(a.w * a.h),
+    )[0]
   const separation = primary ? separationOf(data, width, height, primary) : 0
   const scene = readSubject(
     detected,

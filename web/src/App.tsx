@@ -9,9 +9,11 @@ import {
   SECTION_TITLES,
   assess,
   measurements,
+  quickSummary,
   sections,
   verdict,
   type Assessment,
+  type QuickSummary,
 } from './lib/critic-engine'
 import {
   DEPTH_BY_KEY,
@@ -30,9 +32,12 @@ interface Result {
   score: ScoreResult | null
   critique: Record<string, string>
   verdict: string
+  summary: QuickSummary
 }
 
 type Stage = 'empty' | 'loaded' | 'working' | 'done'
+/** 결과를 세 줄 요약으로만 볼지, 열 항목 전체를 볼지. 기본은 짧은 쪽이다. */
+type ViewMode = 'BRIEF' | 'FULL'
 
 const PERSONA = PERSONA_BY_KEY.BALANCED
 const LEVEL = LEVEL_BY_KEY.BALANCED
@@ -48,6 +53,7 @@ const MODEL_LABEL: Record<NimaStatus, string> = {
 export default function App() {
   const [stage, setStage] = useState<Stage>('empty')
   const [depthKey, setDepthKey] = useState<DepthKey>('STANDARD')
+  const [view, setView] = useState<ViewMode>('BRIEF')
   const [image, setImage] = useState<{ image: HTMLImageElement; url: string } | null>(null)
   const [result, setResult] = useState<Result | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -117,6 +123,13 @@ export default function App() {
               score,
             })
             const line = verdict(assessment, score?.adjusted ?? 0)
+            const summary = quickSummary(assessment, score?.adjusted ?? 0, {
+              persona: PERSONA,
+              level: LEVEL,
+              tone: 'MENTOR',
+              depth: depthConfig,
+              score,
+            })
             setResult({
               url: source.url,
               image: source.image,
@@ -125,6 +138,7 @@ export default function App() {
               score,
               critique,
               verdict: line,
+              summary,
             })
             setModelState(analysis.nimaSource === 'MODEL' ? 'ready' : nimaStatus())
             setStage('done')
@@ -150,6 +164,11 @@ export default function App() {
       lines.push(`종합 점수 ${result.score.adjusted.toFixed(1)} / 10`)
       lines.push(result.verdict)
     }
+    lines.push('')
+    lines.push('한눈에 보는 핵심 요약')
+    lines.push(`한 줄 총평: ${result.summary.headline}`)
+    lines.push(`가장 돋보이는 점: ${result.summary.strength}`)
+    lines.push(`원포인트 조언: ${result.summary.advice}`)
     for (const title of SECTION_TITLES) {
       const body = result.critique[title]
       if (!body) continue
@@ -300,6 +319,31 @@ export default function App() {
                 ))}
               </div>
             </div>
+
+            {result ? (
+              <div className="flex items-center justify-center gap-2 text-[12px] text-muted">
+                <span>보기</span>
+                <div className="flex overflow-hidden rounded-full border border-hairline">
+                  {(
+                    [
+                      ['BRIEF', '핵심 요약'],
+                      ['FULL', '상세 비평'],
+                    ] as [ViewMode, string][]
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setView(key)}
+                      className={`px-3 py-1 transition-colors ${
+                        view === key ? 'bg-sage text-viewfinder' : 'text-muted hover:text-ink'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -322,14 +366,47 @@ export default function App() {
 
             <SubjectBadge scene={result.analysis.scene} source={result.analysis.visionSource} ms={result.analysis.visionMs} />
 
-            <div className="space-y-3">
-              {SECTION_TITLES.map((title) => (
-                <article key={title} className="card p-5">
-                  <h3 className="mb-2 text-[11px] tracking-[0.18em] text-sage">{title}</h3>
-                  <p className="critique-body text-[15px] leading-[1.75] text-ink">{result.critique[title]}</p>
-                </article>
-              ))}
-            </div>
+            <section className="rounded-2xl border border-sage/30 bg-panel p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[11px] tracking-[0.18em] text-sage">한눈에 보는 핵심 요약</h2>
+                <button
+                  type="button"
+                  className="text-[11px] text-muted hover:text-ink"
+                  onClick={() => setView(view === 'BRIEF' ? 'FULL' : 'BRIEF')}
+                >
+                  {view === 'BRIEF' ? '상세 비평 보기' : '요약만 보기'}
+                </button>
+              </div>
+              <dl className="space-y-3">
+                {(
+                  [
+                    ['📌 한 줄 총평', result.summary.headline],
+                    ['✨ 가장 돋보이는 점', result.summary.strength],
+                    ['💡 원포인트 조언', result.summary.advice],
+                  ] as [string, string][]
+                ).map(([label, body]) => (
+                  <div key={label} className="space-y-1">
+                    <dt className="text-[11px] tracking-[0.12em] text-muted">{label}</dt>
+                    <dd className="text-[15px] leading-[1.7] text-ink">{body}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+
+            {view === 'FULL' ? (
+              <div className="space-y-3">
+                {SECTION_TITLES.map((title) => (
+                  <article key={title} className="card p-5">
+                    <h3 className="mb-2 text-[11px] tracking-[0.18em] text-sage">{title}</h3>
+                    <p className="critique-body text-[15px] leading-[1.75] text-ink">{result.critique[title]}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-[12px] text-muted">
+                열 항목의 자세한 비평은 위의 '상세 비평'에서 볼 수 있습니다.
+              </p>
+            )}
 
             <MeasurementPanel
               assessment={result.assessment}

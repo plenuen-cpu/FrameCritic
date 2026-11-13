@@ -1,8 +1,8 @@
-# FrameCritic 2.3.0
+# FrameCritic 2.4.0
 
-The critique now names what is in the photo. Instead of writing about "피사체", the engine says
-인물, 반려견, 고양이, 자동차, 바다, 물가, 산, 숲, 들판, 도심 or the object it actually found (그릇, 컵,
-노트북 …), and every section is written in that subject's own vocabulary.
+A subject the app names correctly, and a three-line summary on top of it. The detector now reads
+two people standing together as two, does not call a portrait a cow, and the result screen opens
+with 한 줄 총평 · 가장 돋보이는 점 · 원포인트 조언 instead of ten paragraphs.
 
 **Install note:** this APK is signed with the CI debug key, which differs from run to run. Uninstall
 the previous FrameCritic before installing (`adb install -r` will fail with a signature mismatch).
@@ -11,110 +11,85 @@ After installing, the header must read a build number that matches this release 
 
 Downloads:
 - `FrameCritic-2.0.0-arm64.apk`: installable APK. The file name keeps the 2.0 lineage that the
-  release job has used since build 53; the app inside reports `v2.3.0`.
+  release job has used since build 53; the app inside reports `v2.4.0`.
 - `FrameCritic-2.0.0-source-with-models.zip`: complete Android Studio project, pinned weight files,
   licenses and Gradle wrapper.
 - `FrameCritic-verification.zip`: Android build reports and Linux CPU inference outputs.
 
 ## What changed in this build
 
-**A subject reading, shared by the app and the web app.** `SubjectCategory` (person, animal,
-vehicle, landscape-water, landscape-nature, urban, still object, general) and `SceneContext`
-(indoor, outdoor, urban, nature, water, sky, night) now live in `Domain.kt` and `domain.ts`.
-`Subject.kt` / `subject.ts` turn the detector's boxes and the scene cues into one `SubjectScene`:
-the subject's name, how many of them were found, the detector's confidence, the scene label, and
-whether the subject separates from its background by brightness.
+**Two people are two people.** The count used to come from boxes overlapping less than a third;
+two people standing side by side overlap more than that, so the second one was deleted by
+deduplication (IoU 0.32). Deduplication now runs at 0.52 for people, and the count is taken from
+distinct box centres — the face, torso and full-body boxes of one person share a centre within 15% of
+the width, two people do not. The badge reads `인물 2명 (신뢰도 83%)`, three or more read
+`인물 여러 명`, and the opening paragraph of the critique has a two-person sentence of its own:
+"화면에는 두 사람이 나란히 자리해 있고, 사진의 관심은 두 사람 사이의 거리와 시선에 놓여 있습니다."
 
-**Ten sections that speak about that subject.** The opening paragraph of 종합 크리틱 names it, and
-빛과 노출, 색채, 구도, 선명도와 질감, 분위기와 순간, 잘 살아난 점, 더 다듬을 점, 촬영 제안, 보정 제안
-each carry a sentence written for that category — rim light on fur, chrome highlights along a car's
-shoulder, an eye-line at a low angle, a horizon dividing sky and water, a mountain ridge fading
-with distance, a pot's shadow on a windowsill. Both sentence variants of every slot mention the
-subject, so the word appears in at least six of the ten sections whatever the seed. The no-numbers,
-no-measurement-vocabulary contract is unchanged, and the raw values stay in the appendix.
+**A portrait is not a cow.** Cattle and wildlife names (cow, sheep, horse, bear, elephant, zebra,
+giraffe) were reaching portraits through coats, dark clothing and crouched poses at 0.38–0.45, and a
+large box scored higher than a tight person box. Now:
 
-**The scene is read from pixels, and said honestly.** Three bands of the frame (mean colour,
-texture, green/blue/bright shares) plus saturation and horizon candidates classify water, nature,
-outdoor, urban, sky, night or indoor. Water needs a bright warm top over a smooth dark band, or a
-blue bottom under a bright top; a textured dark bottom reads as a mountain, not a sea. When nothing
-clearly fits, the subject stays the neutral 장면 and the appendix says the reading rests on pixels
-only. Detector names that contradict an outdoor scene (waves called a bed) are dropped rather than
-printed.
+- a person at 0.30 or more outranks a cattle/wildlife box unless that box is 0.85+ **and** 0.15
+  clear of the person;
+- cattle/wildlife need 0.85 indoors, in the city or against the sky, and 0.60 outdoors;
+- dogs, cats and birds need 0.40 — they are ordinary companions, not misfires;
+- the subject is chosen by `score^1.5 × √area`, so confidence leads and area only breaks ties;
+- detections start at a 0.30 class score (Android `setScoreThreshold(0.30f)`, `setMaxResults(10)`),
+  enough to keep a second person or a small product in frame without naming noise.
 
-**Web app: real object detection in the tab.** `web/src/lib/vision.ts` runs the same
-EfficientDet-Lite0 COCO model as the Android app through LiteRT.js, decodes its raw heads against
-EfficientDet's anchor grid, and feeds the boxes into the same critique engine; the new subject row
-sits above the critique and the appendix shows "피사체 · 신뢰도 · 장면 · 피사체·배경 분리 · 객체 탐지
-시간". A first visit now downloads about 17.5 MB of models (two NIMA nets plus the 4.6 MB detector).
+**Box geometry, measured instead of assumed.** The browser decoder's anchor order and box-encoding
+order were traced on six photos with ground-truth boxes from an independent YOLOX detector. Octave
+step outer, ratios 2/1/0.5, decoded as `[dy, dx, dh, dw]` scored best (mean IoU 0.644 against 0.604
+for the previous reading). The gain is real but modest — it is the best-scoring arrangement of the
+candidates tested, not a proof of the model's internal layout — and it is documented that way in
+`docs/WEB_VISION.md`.
 
-**Tests.** Kotlin: 23 unit tests, including six new subject-scene tests (every category named in at
-least six sections, no digits or measurement words in any depth, scene reading, misfire guard,
-empty fallback). Web: `tsc` clean, `npm run build` clean, and the sentence contract replays 37,800
-generated sections with zero failures.
+**한눈에 보는 핵심 요약.** Both the APK and the web app now open the result with a three-line card,
+above the ten sections:
 
-## Carried over from build 66
+- 📌 **한 줄 총평** — the subject named from the detection plus the completeness band
+  ("두 사람이 나란히 선 장면이 화면의 중심을 잡고, 균형이 좋은 한 장입니다.")
+- ✨ **가장 돋보이는 점** — the strongest axis, or the subject's own praise sentence when that axis
+  is only middling
+- 💡 **원포인트 조언** — one actionable shooting or editing tip for that subject
 
-**Ten critique sections, written at length.** Each section is now built from a pool of
-measurement-driven sentences instead of one or two. Depth sets how many: Quick four, **Standard six
-(the app's default)**, Expert nine.
+A 보기 toggle (웹: `핵심 요약` / `상세 비평`, 앱: chips) switches between the card and the full ten
+sections, and the card is the default. The brief is built by `quickSummary()` in
+`web/src/lib/critic-engine.ts` and `CriticEngine.kt`, so the same photo gives the same three lines on
+both, and it obeys the same contract: no digits, no measurement vocabulary, under 320 characters per
+line. Copy and report-image sharing include the summary.
 
-**Ten critique sections, written at length.** Each section is now built from a pool of
-measurement-driven sentences instead of one or two. Depth sets how many: Quick four, **Standard six
-(the app's default)**, Expert nine. Because most sentences carry two clauses, a Standard section
-runs about eight to twelve sentences and 350–450 Korean characters, an Expert section fourteen to
-nineteen sentences and 500–640 characters — against roughly 100–150 characters in build 65. The
-sections cover what the brief asked for: the whole frame's breath and the meeting of light and
-colour in 종합 크리틱 (now three paragraphs); tone, the closing of both ends of the scale, highlight
-roll-off, shadow detail, how light models form and whether the light reads soft or hard in 빛과 노출;
-colour temperature, dominant and supporting colour, saturation restraint, the emotional air of the
-palette, whether colour follows form or bleeds past it, and where the colour weight sits in 색채;
-placement, horizon candidates, negative space and crowding, left-right balance, the path the eye
-takes, and how the frame holds its subject in 구도; focus, surface texture, separation from the
-background, edge character, evenness of detail, and whether the blur is deliberate in 선명도와 질감;
-tone of the moment, human presence, stillness against a caught instant, the story the frame holds,
-and what stays after you close it in 분위기와 순간; then strengths, refinements, shooting advice
-(angle, distance, metering, shutter, aperture in words rather than numbers) and editing advice
-(tone curve, white balance, highlight and shadow balance, noise order, crop).
+**Tests.** Kotlin: 36 unit tests, 13 of them subject tests — person beats a larger cattle box
+indoors, two people count as two and three as several, an indoor cow at 0.62 is not named, an outdoor
+cow is, a dog photo keeps its dog over a weak person, and the quick summary has three short lines
+without numbers. Web: `tsc` clean, `npm run build` clean, the sentence contract replays 49,140
+generated sections and summaries with zero failures, and `scripts/subject-check.cjs` replays 16
+detection scenarios (person priority, cattle guard, two-person count, water misfire, empty
+detection) with zero failures. Both were also driven in headless Chromium with real photographs:
+zidane.jpg (two people) reads `인물 2명 (신뢰도 83%)` and the two-person summary, a portrait reads
+`인물`, two cats read `고양이 여러 마리`, and a still life falls back to `장면 추정`.
 
-**The contract still holds.** No section body contains a digit or one of the machine terms
-(관찰되었, 관측, Laplacian, COCO, 휘도, 255, 검출, 측정, NIMA, 히스토그램, 클리핑, 분산); the Kotlin
-unit test `critiqueBodyCarriesNoNumbersOrMachineWords` runs on every persona · level · tone · depth
-combination and fails the build otherwise. Every raw value still appears in
-**상세 측정 데이터 및 기술적 근거**. The score curve is untouched: `1 + 9·x^γ` with γ = 0.40 / 0.55 /
-0.85 — build 65's numbers stay valid.
+## Limits
 
-**New: browser app in `web/`.** Vite + React + TypeScript + Tailwind, 100% client-side. The photo
-never leaves the tab: pixels are read through Canvas and the TypeScript port of the same engine
-writes the same Korean prose. `web/src/lib/critic-engine.ts` was verified against 4,050 Kotlin
-outputs (five measurement sets × three subject sets × two NIMA results × every persona, level, tone
-and depth) with zero differences in section text or score. Measurement in the browser covers the
-256-bin luminance histogram, mean luminance, clipping, global and local contrast, Laplacian variance,
-Sobel edge density, mean RGB, channel spread, the 12-bin hue histogram, mean saturation, horizontal
-line candidates and a salience region. The browser has no NIMA or detector weights, so the aesthetic
-score and the "주요 영역" box are heuristics from those measurements; the UI labels them 추정 and the
-README/doc say so. `npm run build` runs `tsc --noEmit` plus the production build, and
-`node scripts/contract-check.cjs` replays 37,800 generated sections against the same contract.
+- The detector is COCO's 80 classes; a still life whose object is not confidently recognised stays
+  "장면 추정" rather than guessing a name.
+- Box geometry is approximate on this model (mean IoU against an independent detector is around
+  0.6), which is enough for naming, counting and the overlay, not for measuring subject size.
+- No physical Galaxy S25 Ultra test was performed for this build. Kotlin unit tests, the APK
+  signature/alignment/content check and host inference checks run in CI; they do not establish
+  Android runtime behaviour.
 
-**Deployment.** Both `vercel.json` files are in the repository; importing `plenuen-cpu/FrameCritic`
-with the root directory set to `web` builds with no further configuration. See
-`docs/VERCEL_DEPLOYMENT.md`.
+## Carried over
 
-**Version.** `versionCode` 25, `versionName` 2.3.0. The header reads `v2.3.0 (Build N)`, N being the
+- Ten critique sections written at length (Quick 4 / Standard 6 / Expert 9 sentences per section),
+  deterministic on-device, no language model, no network, no child process.
+- Subject-aware vocabulary for person, companion animal, vehicle, water, nature, urban and still
+  object; scene reading from pixel bands; the neutral fallback when nothing is clear.
+- No manual `recycle()` of a bitmap the screen draws; every analysis stage can fail alone and hand a
+  neutral, labelled result to the next; crash and stage records; 1280 px analysis cap; report copy
+  and image sharing.
+- Score curve `1 + 9·x^γ` with γ = 0.40 / 0.55 / 0.85 — unchanged.
+
+**Version.** `versionCode` 26, `versionName` 2.4.0. The header reads `v2.4.0 (Build N)`, N being the
 CI run number and therefore this release tag.
-
-## Carried over unchanged
-
-- No manual `recycle()` of any bitmap the screen draws; the image the screen renders is never handed
-  to MediaPipe or released by the analysis.
-- Every analysis stage can fail alone and hand a neutral, clearly labelled result to the next; the
-  report is always filled with all ten critique sections.
-- Crash record with the stack trace and a stage record naming the step that was running.
-- Images capped at 1280 px on the long edge, GGUF weights not packaged, no child process and no
-  network. Report copy and report-image sharing.
-
-**No physical Galaxy S25 Ultra test was performed.** Kotlin unit tests, the APK
-signature/alignment/content check and host inference checks run in CI, but they do not establish
-Android runtime behaviour. On the web side, the build is type-checked, the engine is compared against
-the Kotlin output, and the app was driven in a headless Chromium session with a real photograph
-(upload → analysis → ten sections → measurement appendix) with no console error; that is not a test
-on the user's own browser or device.

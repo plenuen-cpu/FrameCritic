@@ -1124,6 +1124,81 @@ object CriticEngine {
         return "$flavour, $quality"
     }
 
+    // ---------- 한눈에 보는 핵심 요약 ----------
+    /** 결과 화면 맨 위에 세 줄로 보여 주는 핵심 요약. 열 항목을 읽지 않아도 되게 한다. */
+    data class QuickSummary(val headline: String, val strength: String, val advice: String)
+
+    /** 점수대에 따른 짧은 완결도 문장. 요약 카드의 한 줄 총평 뒤에 붙는다. */
+    private fun qualityLine(s10: Double): String = when {
+        s10 >= 9.0 -> "흠을 찾기 어려운 한 장입니다."
+        s10 >= 8.2 -> "완성도가 높은 한 장입니다."
+        s10 >= 7.4 -> "균형이 좋은 한 장입니다."
+        s10 >= 6.6 -> "안정적으로 정리된 한 장입니다."
+        s10 >= 5.8 -> "가능성이 보이는 한 장입니다."
+        else -> "다듬을 여지가 큰 한 장입니다."
+    }
+
+    /** 피사체를 한 줄 총평의 앞자리로 데려온다. 화면에서 확인한 것만 말한다. */
+    private fun subjectLead(scene: SubjectScene?): String = when (scene?.category) {
+        SubjectCategory.PERSON -> when {
+            scene.count >= 3 -> "여러 사람이 어우러진 장면이 화면의 중심을 잡고, "
+            scene.count == 2 -> "두 사람이 나란히 선 장면이 화면의 중심을 잡고, "
+            else -> "한 사람의 얼굴과 시선이 화면의 중심을 잡고, "
+        }
+        SubjectCategory.ANIMAL -> if (scene.count >= 2) "${scene.subject} 여러 마리가 화면의 중심을 잡고, "
+            else "${SubjectReading.josa(scene.subject, "이", "가")} 화면의 중심에서 시선을 붙잡고, "
+        SubjectCategory.VEHICLE -> "${scene.subject}의 형태가 화면의 중심을 잡고, "
+        SubjectCategory.LANDSCAPE_WATER -> "${scene.subject}의 넓이가 화면을 채우고, "
+        SubjectCategory.LANDSCAPE_NATURE -> "${scene.subject}의 결이 화면을 채우고, "
+        SubjectCategory.URBAN_ARCHITECTURE -> "도시의 선이 화면을 나누고, "
+        SubjectCategory.OBJECT_STILL -> "${SubjectReading.josa(scene.subject, "이", "가")} 놓인 자리가 화면의 중심을 잡고, "
+        else -> ""
+    }
+
+    /** 여러 문장 중 첫 문장만 남긴다. */
+    private fun firstSentence(text: String): String {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return ""
+        val index = trimmed.indexOf(". ")
+        val head = if (index > 0) trimmed.substring(0, index + 1) else trimmed
+        return if (head.endsWith(".")) head else "$head."
+    }
+
+    /** 길이 문장 요약. 어떤 예외에도 세 줄을 돌려준다. */
+    fun quickSummary(a: Assessment, score: ScoreResult?): QuickSummary =
+        try { buildQuickSummary(a, score) }
+        catch (e: Throwable) {
+            QuickSummary(
+                qualityLine(7.0),
+                "화면에서 확인한 빛과 색, 구도가 서로를 받쳐 주고 있습니다.",
+                "같은 장면을 한 걸음 옮겨 한 장 더 담아 보십시오."
+            )
+        }
+
+    private fun buildQuickSummary(a: Assessment, score: ScoreResult?): QuickSummary {
+        val persona = Persona.BALANCED
+        val level = Level.BALANCED
+        val resolved = score ?: runCatching { Scoring.evaluate(a.nima.aesthetic, a.evidence, persona, level) }.getOrNull()
+        val contributions = resolved?.contributions ?: a.evidence.indices.map { persona.weights[it] * a.evidence[it].score }
+        val s10 = resolved?.adjusted ?: (1.0 + 9.0 * contributions.sum().coerceIn(0.0, 1.0))
+        val ranked = Axis.entries.indices.sortedWith(
+            compareByDescending<Int> { a.evidence[it].score }.thenByDescending { persona.weights[it] }
+        )
+        val weak = ranked.takeLast(2).reversed()
+        val seed = seedOf(a.measure)
+        val voice = SubjectReading.voice(a.scene, seed)
+        val lead = subjectLead(a.scene)
+        val headline = if (lead.isNotEmpty()) "$lead${qualityLine(s10)}" else "사진 전체의 인상은 ${qualityLine(s10)}"
+        val strength = (
+            if (band(a.evidence[ranked[0]].score) >= 2) firstSentence(highlight(Axis.entries[ranked[0]], a, seed))
+            else voice?.praise ?: firstSentence(highlight(Axis.entries[ranked[0]], a, seed))
+            ).ifBlank { "화면에서 확인한 빛과 색, 구도가 서로를 받쳐 주고 있습니다." }
+        val advice = voice?.shoot?.takeIf { it.isNotBlank() }
+            ?: firstSentence(shootAdvice(Axis.entries[weak[0]], a, Tone.MENTOR))
+                .ifBlank { "같은 장면을 한 걸음 옮겨 한 장 더 담아 보십시오." }
+        return QuickSummary(headline, strength, advice)
+    }
+
     private fun openingFor(s10: Double): String = when {
         s10 >= 9.0 -> "완성도가 단단한 한 장입니다. 흠을 찾기보다 유지할 이유를 먼저 보게 되고, 화면을 오래 바라봐도 인상이 흐트러지지 않습니다."
         s10 >= 8.2 -> "완성도가 높은 한 장입니다. 빛과 색이 서로를 받쳐 주고, 구도가 그 위에서 흔들리지 않습니다."

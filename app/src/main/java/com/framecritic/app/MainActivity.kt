@@ -157,6 +157,8 @@ class MainActivity:ComponentActivity(){
     DisposableEffect(s.busy){view.keepScreenOn=s.busy;onDispose{view.keepScreenOn=false}}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){it?.let(vm::load)}
     val scope=rememberCoroutineScope();var sharing by remember{mutableStateOf(false)};var info by remember{mutableStateOf(false)}
+    /** 결과를 세 줄 요약으로만 볼지, 열 항목 전체를 볼지. 기본은 짧은 쪽이다. */
+    var brief by remember{mutableStateOf(true)}
     Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
             Column{Text("FRAMECRITIC",fontSize=24.sp,fontWeight=FontWeight.Medium,letterSpacing=2.sp);Text("$version · 사진을 보고, 근거를 읽다",fontSize=12.sp,color=Color.Gray)}
@@ -188,8 +190,15 @@ class MainActivity:ComponentActivity(){
             HorizontalDivider(color=Hairline)
             ScoreHero(analysis,s.report?.score)
             s.report?.let{report->
+                val quick=remember(report){runCatching{CriticEngine.quickSummary(analysis.assessment,report.score)}.getOrNull()}
+                quick?.let{QuickSummaryCard(it)}
                 report.failure?.let{Text(it,fontSize=12.sp,color=Color.Gray)}
-                report.sections.forEach{(title,body)->CritiqueCard(title,body)}
+                if(report.sections.isNotEmpty())Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){
+                    FilterChip(brief,{brief=true},label={Text("핵심 요약",fontSize=12.sp)})
+                    FilterChip(!brief,{brief=false},label={Text("상세 비평",fontSize=12.sp)})
+                }
+                if(!brief)report.sections.forEach{(title,body)->CritiqueCard(title,body)}
+                else if(report.sections.isNotEmpty())Text("열 항목의 자세한 비평은 '상세 비평'에서 볼 수 있습니다.",fontSize=12.sp,color=Color.Gray)
                 if(report.sections.isNotEmpty())Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
                     OutlinedButton(onClick={
                         val cm=context.getSystemService(Context.CLIPBOARD_SERVICE)as ClipboardManager
@@ -240,6 +249,22 @@ class MainActivity:ComponentActivity(){
                 fontSize=12.sp,color=Accent,modifier=Modifier.padding(top=4.dp)
             )
         }
+    }
+}
+
+/** 한눈에 보는 핵심 요약. 긴 열 항목을 읽지 않아도 되게 세 줄로 줄인다. */
+@Composable fun QuickSummaryCard(summary:CriticEngine.QuickSummary){
+    Column(Modifier.fillMaxWidth().background(CardBg,RoundedCornerShape(14.dp)).border(1.dp,Accent.copy(alpha=.35f),RoundedCornerShape(14.dp)).padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        Text("한눈에 보는 핵심 요약",fontSize=12.sp,color=Accent,letterSpacing=1.sp)
+        SummaryLine("📌 한 줄 총평",summary.headline)
+        SummaryLine("✨ 가장 돋보이는 점",summary.strength)
+        SummaryLine("💡 원포인트 조언",summary.advice)
+    }
+}
+@Composable private fun SummaryLine(label:String,body:String){
+    Column(verticalArrangement=Arrangement.spacedBy(2.dp)){
+        Text(label,fontSize=11.sp,color=Color.Gray)
+        Text(body,fontSize=15.sp,lineHeight=24.sp)
     }
 }
 

@@ -1,4 +1,4 @@
-# FrameCritic 2.2
+# FrameCritic 2.4
 
 Native Android application and browser app for on-device photo criticism. Kotlin / Jetpack Compose / Material 3. Korean interface. Samsung Galaxy S25 Ultra (ARM64, Android 9+) target.
 
@@ -43,8 +43,19 @@ sit in a fold-out block at the bottom.
   model's raw heads (19,206 anchors × 90 COCO ids, sigmoid already applied) are decoded against
   EfficientDet's multi-scale anchor grid, deduplicated per class, and mapped back through the
   letterbox to image coordinates. It recognises person, dog/cat/bird, car/bicycle/bus, and the
-  still-life objects that fit a frame, with a confidence score shown in the UI. See
+  still-life objects that fit a frame, with a confidence score shown in the UI. Detections are
+  taken from a 0.30 class score, people are deduplicated at an IoU of 0.52 so two people standing
+  side by side stay two, and a person at 0.30 outranks a cattle/wildlife box unless that box is
+  overwhelming (0.85 and clearly higher). Cattle and wildlife (cow, sheep, horse, bear, elephant,
+  zebra, giraffe) need 0.85 indoors, in the city or against the sky and 0.60 outdoors; dogs, cats
+  and birds need 0.40. How many were found is counted from distinct box centres, not from box
+  overlap, so the face/torso/full-body boxes of one person read as one. See
   `docs/WEB_VISION.md` for the anchor layout and the class-index convention.
+- **핵심 요약 (quick summary):** the result screen opens with a three-line card — 한 줄 총평,
+  가장 돋보이는 점, 원포인트 조언 — written by the same deterministic engine from the same facts,
+  and a 보기 toggle switches between that card and the ten full sections. The card is computed in
+  `quickSummary()` on both sides, so the web app and the APK show the same three lines for the same
+  photo.
 - **Scene reading:** three horizontal bands of the image give mean colour, luminance texture and
   the share of blue/green/bright pixels; with the measured saturation and horizon candidates they
   classify the scene as water, nature (mountain/forest/field), outdoor, urban, sky, night or indoor

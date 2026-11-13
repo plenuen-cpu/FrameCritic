@@ -206,6 +206,30 @@ for (const kind of ['flat', 'gradient', 'sky', 'blown']) {
             }
           }
           if (score && (score.adjusted < 1 || score.adjusted > 10)) fail(`${kind} 점수 범위`, score.adjusted)
+
+          // 한눈에 보는 핵심 요약도 같은 계약을 지켜야 한다. 세 줄 모두 짧고, 수치와 계측 어휘가 없다.
+          const summary = engine.quickSummary(assessment, score?.adjusted ?? 0, {
+            persona,
+            level,
+            tone: tone.key,
+            depth,
+            score,
+          })
+          for (const [label, body] of [
+            ['한 줄 총평', summary.headline],
+            ['가장 돋보이는 점', summary.strength],
+            ['원포인트 조언', summary.advice],
+          ]) {
+            checked++
+            if (!body || body.trim().length === 0) fail(`${kind} 요약 ${label} 비어 있음`)
+            if (body !== body.trim()) fail(`${kind} 요약 ${label} 앞뒤 공백`)
+            if (body.length > 320) fail(`${kind} 요약 ${label} 길이`, body.length)
+            if (/[0-9]/.test(body)) fail(`${kind} 요약 ${label} 숫자`, body)
+            for (const word of BANNED) {
+              if (body.includes(word)) fail(`${kind} 요약 ${label} '${word}'`, body)
+            }
+          }
+          if (!summary.headline.trim().endsWith('.')) fail(`${kind} 요약 한 줄 총평 문장 끝`, summary.headline)
         }
       }
     }

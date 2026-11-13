@@ -7,6 +7,7 @@ import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.util.Locale
 import kotlin.math.hypot
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 data class Analysis(val nima:NimaResult,val metrics:Metrics,val subjects:List<Subject>,val assessment:Assessment,val warnings:List<String>,val elapsedMs:Long,val scene:SubjectScene?=null)
@@ -19,6 +20,12 @@ data class Report(val persona:Persona,val level:Level,val tone:Tone,val depth:De
         appendLine("FrameCritic · 사진 비평")
         score?.let{appendLine("종합 점수 %.1f / 10".format(it.adjusted))
             appendLine(CriticEngine.verdict(analysis.assessment,it.adjusted))}
+        runCatching{CriticEngine.quickSummary(analysis.assessment,score)}.getOrNull()?.let{quick->
+            appendLine();appendLine("한눈에 보는 핵심 요약")
+            appendLine("한 줄 총평: ${quick.headline}")
+            appendLine("가장 돋보이는 점: ${quick.strength}")
+            appendLine("원포인트 조언: ${quick.advice}")
+        }
         for((k,v)in sections){appendLine();appendLine(k);appendLine(v)}
         appendLine()
         appendLine("── 상세 측정 데이터 및 기술적 근거 ──")
@@ -136,7 +143,8 @@ object Pipeline {
         }
         // 주인공과 장면을 읽는다. 탐지 결과(이름·신뢰도)와 픽셀 띠 근거만 쓴다.
         val cues=runCatching{Vision.cues(bitmap)}.getOrNull()
-        val primary=boxes.maxByOrNull{box:SubjectBox->box.confidence*sqrt(box.w*box.h)}
+        // 주인공 상자는 주인공을 고르는 기준(SubjectReading의 무게중심)과 같이 고른다.
+        val primary=boxes.maxByOrNull{box:SubjectBox->box.confidence.pow(1.5)*sqrt(box.w*box.h)}
         val separation=if(primary!=null&&cues!=null) runCatching{Vision.separation(bitmap,primary)}.getOrDefault(0.0) else 0.0
         val scene=SubjectReading.read(boxes,cues,measure.saturation,measure.luminance,measure.lines.size,separation,"MODEL")
         // 장면 자체가 주인공인 풍경에서는 엉뚱한 사물 이름이 본문에 끼어들지 않게 상자를 비운다.

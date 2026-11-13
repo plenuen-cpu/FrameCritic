@@ -5,11 +5,14 @@
  * 직접 추론한다. 사진은 어디로도 전송되지 않는다.
  *
  * 모델의 출력은 후처리 전의 원시 텐서 두 개다.
- *  - 클래스 로짓 [1, 19206, 90]  (배경 포함 90칸, 시그모이드를 지나야 확률이 된다)
- *  - 상자 인코딩 [1, 19206, 4]   (앵커에 대한 상대값)
+ *  - 클래스 확률 [1, 19206, 90]  (마지막 연산이 시그모이드라 이미 확률이다)
+ *  - 상자 인코딩 [1, 19206, 4]   (앵커에 대한 상대값, 순서는 [dy, dx, dh, dw])
  * 그래서 앵커를 만들어 상자를 되돌리고, 같은 범주끼리 겹침을 정리해야 한다. 앵커 격자는
  * EfficientDet의 다중 스케일 앵커(레벨 3~7, 앵커 배율 4, 한 옥타브에 세 단계, 종횡비 세 가지)를
  * 그대로 옮겼다. 상자 인코딩은 10·10·5·5 배율의 SSD 방식이다.
+ *
+ * 격자의 순서와 상자 인코딩의 순서는 2026-11-13에 여러 장의 사진으로 실측해 정했다.
+ * 같은 사진에서 두 후보를 나란히 돌려, 정답 상자(YOLOX로 따로 잰 값)와의 겹침이 더 큰 쪽을 골랐다.
  *
  * 탐지기가 없거나 실패하면 null을 돌려주고, 분석기는 '주요 영역' 휴리스틱으로 넘어간다.
  */
@@ -118,14 +121,16 @@ let anchors: Anchor[] | null = null
 
 /**
  * EfficientDet의 앵커 격자. 이미지 320×320, 레벨 3~7, 앵커 배율 4,
- * 한 옥타브에 세 단계(1, 2^(1/3), 2^(2/3)), 종횡비 1·2·0.5.
- * 모델의 출력 순서는 (행, 열, 종횡비, 단계) 순이라 그 순서를 그대로 만든다.
+ * 한 옥타브에 세 단계(1, 2^(1/3), 2^(2/3)), 종횡비 2·1·0.5.
+ * 모델의 출력 순서는 (행, 열, 단계, 종횡비) 순이라 그 순서를 그대로 만든다.
+ * 단계가 바깥이고 종횡비가 안쪽이라는 점이 상자 크기를 좌우한다. 순서가 뒤집히면
+ * 점수는 맞는데 상자만 엉뚱한 크기로 나와, 사람 둘이 한 사람으로 합쳐지는 일이 생긴다.
  */
 function anchorGrid(): Anchor[] {
   if (anchors) return anchors
   const out: Anchor[] = []
   const scales = [1, Math.pow(2, 1 / 3), Math.pow(2, 2 / 3)]
-  const ratios = [1, 2, 0.5]
+  const ratios = [2, 1, 0.5]
   for (let level = 3; level <= 7; level++) {
     const stride = Math.pow(2, level)
     const cells = Math.ceil(SIZE / stride)
@@ -134,8 +139,8 @@ function anchorGrid(): Anchor[] {
       for (let col = 0; col < cells; col++) {
         const cy = (row * stride + stride / 2) / SIZE
         const cx = (col * stride + stride / 2) / SIZE
-        for (const ratio of ratios) {
-          for (const scale of scales) {
+        for (const scale of scales) {
+          for (const ratio of ratios) {
             out.push({
               x: cx,
               y: cy,
@@ -271,13 +276,16 @@ export async function detectSubjects(
         }
       }
       // 모델 출력은 이미 시그모이드를 지난 확률이다. 다시 시그모이드를 씌우지 않는다.
+      // 문턱을 0.30으로 열어, 화면에서 작게 잡히는 두 번째 인물과 일상 피사체를 놓치지 않는다.
       const score = Math.min(1, Math.max(0, bestScore))
-      if (score < 0.35 || bestClass < 0) continue
+      if (score < 0.3 || bestClass < 0) continue
       const anchor = grid[i]
-      const dx = raw[i * 4]
-      const dy = raw[i * 4 + 1]
-      const dw = raw[i * 4 + 2]
-      const dh = raw[i * 4 + 3]
+      // 인코딩 순서는 [dy, dx, dh, dw]다. [dx, dy, dw, dh]로 읽으면 x·y와 너비·높이가
+      // 뒤바뀌어, 나란히 선 두 사람의 상자가 서로를 덮어 버린다.
+      const dy = raw[i * 4]
+      const dx = raw[i * 4 + 1]
+      const dh = raw[i * 4 + 2]
+      const dw = raw[i * 4 + 3]
       if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(dw) || !Number.isFinite(dh))
         continue
       const cy = anchor.y + (dy / 10) * anchor.h
@@ -311,8 +319,10 @@ export async function detectSubjects(
     candidates.sort((a, b) => b.score - a.score)
     const kept: Detection[] = []
     for (const candidate of candidates) {
+      // 사람은 나란히 서면 상자가 절반 가까이 겹친다. 문턱을 0.52로 두어 두 번째 사람을 지우지 않는다.
+      const limit = candidate.label === 'person' ? 0.52 : 0.48
       const duplicate = kept.findIndex(
-        (other) => other.label === candidate.label && overlap(other, candidate) > 0.32,
+        (other) => other.label === candidate.label && overlap(other, candidate) > limit,
       )
       if (duplicate >= 0) {
         // 같은 대상을 가리키는 상자가 둘이면, 점수가 비슷할 때 더 작게 잡은 쪽을 남긴다.

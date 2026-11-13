@@ -108,6 +108,15 @@ export const KO_LABELS: Record<string, string> = {
 /** 사람으로 읽는 이름. */
 const PERSON_LABELS = new Set(['person'])
 
+/** 일상에서 흔히 만나는 반려동물. 이름을 그대로 인정하되 최소 신뢰도를 둔다. */
+const COMPANION_LABELS = new Set(['dog', 'cat', 'bird'])
+
+/**
+ * 소·말·곰처럼 사람 사진에서 오탐이 잦은 가축·야생동물.
+ * 실내나 도심에서는 0.85 이상일 때만 이름을 믿고, 그 밖에서는 0.60 이상을 요구한다.
+ */
+const LIVESTOCK_LABELS = new Set(['cow', 'sheep', 'horse', 'bear', 'elephant', 'zebra', 'giraffe'])
+
 /** 동물로 읽는 이름과, 화면에 쓸 말. */
 const ANIMAL_LABELS: Record<string, string> = {
   dog: '반려견',
@@ -159,8 +168,9 @@ const OBJECT_LABELS = new Set([
   'camera',
 ])
 
-/** 한 피사체를 이름 붙일 때 쓰는 말. 갈래와 무관하게 상자 크기 비교에 쓴다. */
+/** 한 피사체를 이름 붙일 때 쓰는 말. 갈래와 상자 크기 비교에 쓴다. */
 interface Reading {
+  label: string
   category: SubjectCategory
   name: string
   score: number
@@ -169,13 +179,15 @@ interface Reading {
 
 function readingOf(label: string, score: number, area: number): Reading | null {
   const key = label.toLowerCase()
-  if (PERSON_LABELS.has(key)) return { category: SubjectCategory.PERSON, name: '인물', score, area }
+  if (PERSON_LABELS.has(key))
+    return { label: key, category: SubjectCategory.PERSON, name: '인물', score, area }
   if (ANIMAL_LABELS[key])
-    return { category: SubjectCategory.ANIMAL, name: ANIMAL_LABELS[key], score, area }
+    return { label: key, category: SubjectCategory.ANIMAL, name: ANIMAL_LABELS[key], score, area }
   if (VEHICLE_LABELS[key])
-    return { category: SubjectCategory.VEHICLE, name: VEHICLE_LABELS[key], score, area }
+    return { label: key, category: SubjectCategory.VEHICLE, name: VEHICLE_LABELS[key], score, area }
   if (OBJECT_LABELS.has(key))
     return {
+      label: key,
       category: SubjectCategory.OBJECT_STILL,
       name: KO_LABELS[key] ?? '사물',
       score,
@@ -270,6 +282,65 @@ export function readScene(
   return { scene: SceneContext.INDOOR, label: '실내' }
 }
 
+/** 인물·반려동물·가축이 이름을 얻는 최소 신뢰도. 탐지기가 문턱을 0.30까지 열어 두었으므로 여기서 한 번 더 거른다. */
+const PERSON_FLOOR = 0.3
+const COMPANION_FLOOR = 0.4
+const LIVESTOCK_OUTDOOR_FLOOR = 0.6
+const LIVESTOCK_INDOOR_FLOOR = 0.85
+/** 사진 한 장에서 동시에 고려하는 탐지의 최소 신뢰도와 면적. */
+const DETECTION_FLOOR = 0.3
+const DETECTION_AREA_FLOOR = 0.008
+
+/**
+ * 같은 이름이 몇 개인지 셀 때, 중심이 이만큼 가까우면 한 대상으로 본다.
+ * 나란히 선 두 사람은 중심이 화면 폭의 15% 이상 떨어지지만, 한 사람의 얼굴·상체·전신 상자는
+ * 중심이 거의 같은 자리에 몰린다. 상자끼리 겹치는지만 보면 나란히 선 두 사람이 하나로 합쳐진다.
+ */
+const SAME_TARGET_X = 0.15
+const SAME_TARGET_Y = 0.22
+
+/** 실내·도심·하늘처럼 가축이 있을 리 없는 장면. */
+function domesticScene(scene: SceneContext): boolean {
+  return scene === SceneContext.INDOOR || scene === SceneContext.URBAN || scene === SceneContext.SKY
+}
+
+/** 이 장면에서 그 이름을 그대로 믿어도 되는지. 소·말 오탐을 걸러내는 자리다. */
+function believable(label: string, score: number, scene: SceneContext): boolean {
+  if (COMPANION_LABELS.has(label)) return score >= COMPANION_FLOOR
+  if (LIVESTOCK_LABELS.has(label))
+    return score >= (domesticScene(scene) ? LIVESTOCK_INDOOR_FLOOR : LIVESTOCK_OUTDOOR_FLOOR)
+  return true
+}
+
+/** 주인공을 고르는 무게중심. 면적만 키우면 큰 오탐이 이기고, 신뢰도만 보면 작은 디테일이 이긴다. */
+function weightOf(reading: Reading): number {
+  return Math.pow(reading.score, 1.5) * Math.sqrt(Math.max(0, reading.area))
+}
+
+/** 한 사진의 주인공 영역으로 받아들일 만한가. */
+function acceptable(best: Reading): boolean {
+  if (best.category === SubjectCategory.PERSON) return best.score >= PERSON_FLOOR && best.area >= 0.01
+  return best.score >= 0.36 && best.area >= 0.015
+}
+
+/**
+ * 같은 이름의 탐지가 몇 개인지 센다. 상자가 아니라 중심을 모아 세므로,
+ * 한 사람을 여러 상자로 잡은 것과 나란히 선 두 사람을 구분한다.
+ */
+function countOf(detections: RawDetection[], label: string, bestScore: number): number {
+  const floor = Math.max(0.42, bestScore * 0.6)
+  const centers: { x: number; y: number }[] = []
+  const list = detections
+    .filter((d) => d.label.toLowerCase() === label)
+    .filter((d) => d.score >= floor && d.w > 0 && d.h > 0 && d.w * d.h >= 0.01)
+    .sort((a, b) => b.score - a.score)
+  for (const d of list) {
+    const same = centers.some((c) => Math.abs(c.x - d.cx) < SAME_TARGET_X && Math.abs(c.y - d.cy) < SAME_TARGET_Y)
+    if (!same) centers.push({ x: d.cx, y: d.cy })
+  }
+  return Math.min(3, centers.length)
+}
+
 /**
  * 탐지 결과와 장면 근거를 합쳐 피사체 하나를 정한다.
  * 탐지기가 잡은 것이 충분히 크면 그것이 주인공이고, 아니면 장면 자체가 주인공이다.
@@ -283,14 +354,22 @@ export function readSubject(
   separation: number,
   source: 'MODEL' | 'SCENE',
 ): SubjectScene {
+  const { scene, label } = readScene(cues, saturation, luminance, lineCount)
   const readings = detections
     .map((d) => readingOf(d.label, d.score, Math.max(0, d.w) * Math.max(0, d.h)))
     .filter((r): r is Reading => r !== null)
-    .filter((r) => r.score >= 0.3 && r.area >= 0.01)
-    .sort((a, b) => b.score * Math.sqrt(b.area) - a.score * Math.sqrt(a.area))
-  const { scene, label } = readScene(cues, saturation, luminance, lineCount)
+    .filter((r) => r.score >= DETECTION_FLOOR && r.area >= DETECTION_AREA_FLOOR)
+    .filter((r) => believable(r.label, r.score, scene))
+    .sort((a, b) => weightOf(b) - weightOf(a))
 
-  const best = readings[0]
+  // 인물이 잡혀 있으면, 소·말 같은 가축의 큰 상자가 주인공을 가져가지 못하게 한다.
+  const person = readings.find((r) => r.category === SubjectCategory.PERSON && r.score >= PERSON_FLOOR)
+  let best = readings[0]
+  if (best && person && best.category === SubjectCategory.ANIMAL && LIVESTOCK_LABELS.has(best.label)) {
+    const overwhelming = best.score >= 0.85 && best.score - person.score >= 0.15
+    if (!overwhelming) best = person
+  }
+
   const outdoorScene =
     scene === SceneContext.WATER ||
     scene === SceneContext.NATURE ||
@@ -298,17 +377,8 @@ export function readSubject(
     scene === SceneContext.URBAN
   // 야외 풍경으로 읽히는 화면에서 실내 사물 이름이 잡히면, 그 이름보다 장면을 믿는다.
   const objectMisfire = best?.category === SubjectCategory.OBJECT_STILL && outdoorScene
-  if (source === 'MODEL' && best && !objectMisfire && best.score >= 0.4 && best.area >= 0.02) {
-    const count = Math.min(
-      3,
-      readings.filter(
-        (r) =>
-          r.category === best.category &&
-          r.name === best.name &&
-          r.score >= Math.max(0.45, best.score * 0.8) &&
-          r.area >= 0.03,
-      ).length,
-    )
+  if (source === 'MODEL' && best && !objectMisfire && acceptable(best)) {
+    const count = countOf(detections, best.label, best.score)
     const sceneNote = sceneNoteFor(scene, label)
     const evidence =
       `${detectionEvidence(best, count)} · 장면 ${label}${sceneNote}` +
@@ -380,7 +450,8 @@ function detectionEvidence(best: Reading, count: number): string {
     return `${best.name} ${count >= 2 ? '여러 마리' : '한 마리'} (신뢰도 ${percent}%)`
   }
   if (best.category === SubjectCategory.PERSON) {
-    return `인물 ${count >= 2 ? '여러 명' : '한 명'} (신뢰도 ${percent}%)`
+    const many = count >= 3 ? '여러 명' : count === 2 ? '2명' : '한 명'
+    return `인물 ${many} (신뢰도 ${percent}%)`
   }
   if (best.category === SubjectCategory.VEHICLE) {
     return `${best.name} (신뢰도 ${percent}%)`
@@ -475,11 +546,14 @@ function animalVoice(name: string, count: number, seed: number): SubjectVoice {
 }
 
 function personVoice(count: number, seed: number): SubjectVoice {
+  const two = count === 2
   const many = count >= 2
   return {
-    opening: many
-      ? '화면에는 사람이 둘 이상 있고, 사진의 관심은 그들 사이의 거리와 시선에 놓여 있습니다.'
-      : '화면의 주인공은 한 사람이고, 사진의 관심은 그 얼굴과 시선에 모여 있습니다.',
+    opening: two
+      ? '화면에는 두 사람이 나란히 자리해 있고, 사진의 관심은 두 사람 사이의 거리와 시선에 놓여 있습니다.'
+      : many
+        ? '화면에는 사람이 둘 이상 있고, 사진의 관심은 그들 사이의 거리와 시선에 놓여 있습니다.'
+        : '화면의 주인공은 한 사람이고, 사진의 관심은 그 얼굴과 시선에 모여 있습니다.',
     light: choose(seed, 301, [
       '인물의 이마와 뺨에 얹힌 빛이 부드럽게 흐르고, 턱 아래로 지는 그림자가 얼굴의 입체를 만듭니다.',
       '빛이 인물의 한쪽 어깨를 밝히고 반대쪽을 어둡게 남겨, 사람의 윤곽이 배경에서 천천히 떠오릅니다.',
@@ -489,7 +563,9 @@ function personVoice(count: number, seed: number): SubjectVoice {
       '인물의 얼굴색과 옷의 색이 서로를 받쳐 주어, 시선이 사람에게서 다른 곳으로 새지 않습니다.',
     ]),
     composition: choose(seed, 303, [
-      '인물이 화면의 한쪽에 서고 시선이 비어 있는 쪽을 향해, 그 여백이 인물의 생각처럼 남습니다.',
+      two
+        ? '두 사람이 화면을 나누어 서고, 그 사이의 거리가 사진의 리듬이 됩니다.'
+        : '인물이 화면의 한쪽에 서고 시선이 비어 있는 쪽을 향해, 그 여백이 인물의 생각처럼 남습니다.',
       '인물의 어깨선과 배경의 선이 나란히 놓여, 사진의 뼈대가 사람을 중심으로 서 있습니다.',
     ]),
     texture: choose(seed, 304, [
@@ -790,11 +866,15 @@ export function buildVoice(scene: SubjectScene | null, seed: number): SubjectVoi
   }
 }
 
-/** 피사체 이름과 수를 화면에 쓸 말로 정리한다. 예: '반려견 여러 마리', '인물', '그릇' */
+/** 피사체 이름과 수를 화면에 쓸 말로 정리한다. 예: '반려견 여러 마리', '인물 2명', '그릇' */
 export function subjectWithCount(scene: SubjectScene): string {
+  if (scene.category === SubjectCategory.PERSON) {
+    if (scene.count >= 3) return '인물 여러 명'
+    if (scene.count === 2) return '인물 2명'
+    return scene.subject
+  }
   if (scene.count < 2) return scene.subject
   if (scene.category === SubjectCategory.ANIMAL) return `${scene.subject} 여러 마리`
-  if (scene.category === SubjectCategory.PERSON) return '인물 여러 명'
   return `${scene.subject} 여러 개`
 }
 
@@ -802,15 +882,7 @@ export function subjectWithCount(scene: SubjectScene): string {
 export function subjectLine(scene: SubjectScene): string {
   const sceneName = scene.sceneLabel || SCENE_TITLES[scene.scene]
   if (scene.category === SubjectCategory.GENERAL) return sceneName
-  const subject =
-    scene.count >= 2
-      ? scene.category === SubjectCategory.ANIMAL
-        ? `${scene.subject} 여러 마리`
-        : scene.category === SubjectCategory.PERSON
-          ? `인물 여러 명`
-          : scene.subject
-      : scene.subject
-  return `${subject} · ${sceneName}`
+  return `${subjectWithCount(scene)} · ${sceneName}`
 }
 
 export { josa }

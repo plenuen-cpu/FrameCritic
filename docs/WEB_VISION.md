@@ -32,29 +32,48 @@ classic way to get "broccoli" on a portrait.
 ### Anchors
 
 EfficientDet multi-scale anchors: levels 3–7 (stride 8/16/32/64/128 → 40×40, 20×20, 10×10, 5×5, 3×3),
-anchor scale 4, three octave steps `2^(i/3)`, aspect ratios 1, 2, 0.5 → 9 anchors per cell,
-19,206 in total. Order is row, column, aspect ratio, scale. Box decoding is the SSD 10/10/5/5
-encoding:
+anchor scale 4, three octave steps `2^(i/3)`, aspect ratios 2, 1, 0.5 → 9 anchors per cell,
+19,206 in total. Order is row, column, octave step, aspect ratio (step outer, ratio inner).
+
+Both the anchor order and the box-encoding order were measured on 2026-11-13 rather than assumed.
+Six samples (a two-person press photo, a street with a bus and three people, a portrait, a cat, a
+car, two cats) were traced with an independent YOLOX detector for ground-truth boxes, then every
+plausible anchor order and encoding order was scored by mean IoU against them: step-outer with
+ratios 2/1/0.5 decoded as `[dy, dx, dh, dw]` scored highest (0.644), the previous ratio-outer
+`[dx, dy, dw, dh]` reading scored 0.604. The differences are visible in the boxes but modest, so
+treat this as the best-scoring arrangement found, not as a proven exact match.
+
+Box decoding is the SSD 10/10/5/5 encoding:
 
 ```
 cx = ax + dx / 10 * aw      cy = ay + dy / 10 * ah
 w  = exp(dw / 5) * aw       h  = exp(dh / 5) * ah
 ```
 
-Boxes are kept above a 0.35 class score, deduplicated per class (IoU 0.32, preferring the tighter
-box when two proposals score within 0.03), and capped at ten.
+Boxes are kept above a 0.30 class score, deduplicated per class (IoU 0.48; 0.52 for person, because
+two people standing side by side overlap heavily), and capped at ten.
 
 ## From detections to a subject
 
 `readSubject` maps each detection to one of eight categories (person, animal, vehicle, landscape
 water, landscape nature, urban/architecture, still object, general). The strongest
-`score × √area` detection with score ≥ 0.4 and area ≥ 2% of the frame becomes the subject; the
-count of same-name detections above 0.45 sets "여러 마리/여러 명". Two guards keep the text honest:
+`score^1.5 × √area` detection becomes the subject — confidence dominates area, so a large misread box
+cannot outrank a tighter confident one. Acceptance: a person needs score ≥ 0.30 and 1% of the frame,
+anything else 0.36 and 1.5%. Guards keep the text honest:
 
+- a person at 0.30 or more outranks a cattle/wildlife box (cow, sheep, horse, bear, elephant, zebra,
+  giraffe) unless that box is both 0.85+ and 0.15 clear of the person — a portrait is not a cow;
+- cattle/wildlife need 0.85 indoors, in the city or against the sky, and 0.60 outdoors; dogs, cats
+  and birds need 0.40;
 - an object detection in a scene that reads as water, nature, sky or city is ignored (a detector
   that calls waves a bed must not put "침대" in a seascape critique);
 - when no detection passes, the subject is the landscape itself ("물가", "산", "숲", "들판",
   "도시의 선") or the neutral "장면", and the appendix says the reading rests on pixels only.
+
+How many were found is counted from box centres, not from overlap: detections of the same label
+above `max(0.42, best × 0.6)` are clustered, and two centres closer than 15% of the width and 22% of
+the height count as one subject. One person's face, torso and full-body boxes share a centre; two
+people side by side do not. Two people read "인물 2명", three or more "인물 여러 명".
 
 ## Scene reading
 

@@ -78,6 +78,85 @@ class SubjectSceneTest {
         assertTrue(s.evidence.contains("신뢰도"))
     }
 
+    /** 하늘도 물도 초록도 아닌 닫힌 공간. 실내로 읽히게 만드는 띠 근거다. */
+    private fun indoorCues() = SceneCues(
+        BandStats(70.0, 66.0, 62.0, 68.0, 18.0, 0.0, 0.0, 0.0),
+        BandStats(74.0, 70.0, 66.0, 71.0, 22.0, 0.0, 0.0, 0.0),
+        BandStats(60.0, 56.0, 52.0, 57.0, 20.0, 0.0, 0.0, 0.0),
+        false
+    )
+
+    private fun outdoorCues() = SceneCues(
+        BandStats(120.0, 150.0, 110.0, 133.0, 26.0, .1, 0.0, 0.0),
+        BandStats(60.0, 120.0, 60.0, 96.0, 38.0, .55, 0.0, 0.0),
+        BandStats(70.0, 110.0, 55.0, 90.0, 34.0, .5, 0.0, 0.0),
+        false
+    )
+
+    @Test fun personWinsOverLargeLivestockBoxIndoors() {
+        val boxes = listOf(SubjectBox("person", .72, .46, .5, .18, .3), SubjectBox("cow", .44, .5, .5, .8, .9))
+        val s = SubjectReading.read(boxes, indoorCues(), .3, 110.0, 0, .2, "MODEL")
+        assertEquals(SubjectCategory.PERSON, s.category)
+        assertEquals(1, s.count)
+    }
+
+    @Test fun twoPeopleAreCountedTogether() {
+        val boxes = listOf(
+            SubjectBox("person", .88, .3, .55, .3, .6),
+            SubjectBox("person", .62, .66, .55, .28, .58),
+            SubjectBox("cow", .46, .5, .5, .6, .5)
+        )
+        val s = SubjectReading.read(boxes, indoorCues(), .3, 110.0, 0, .2, "MODEL")
+        assertEquals(SubjectCategory.PERSON, s.category)
+        assertEquals(2, s.count)
+        assertEquals("인물 2명", SubjectReading.subjectWithCount(s))
+        assertTrue(s.evidence.contains("인물 2명"))
+    }
+
+    @Test fun threePeopleReadAsSeveral() {
+        val boxes = listOf(
+            SubjectBox("person", .9, .25, .55, .24, .6),
+            SubjectBox("person", .66, .5, .55, .24, .6),
+            SubjectBox("person", .58, .75, .55, .24, .6)
+        )
+        val s = SubjectReading.read(boxes, indoorCues(), .3, 110.0, 0, .2, "MODEL")
+        assertEquals(3, s.count)
+        assertEquals("인물 여러 명", SubjectReading.subjectWithCount(s))
+    }
+
+    @Test fun indoorCowAtLowConfidenceIsNotNamed() {
+        val boxes = listOf(SubjectBox("cow", .62, .5, .55, .6, .5))
+        val s = SubjectReading.read(boxes, indoorCues(), .3, 110.0, 0, .2, "MODEL")
+        assertNotEquals(SubjectCategory.ANIMAL, s.category)
+    }
+
+    @Test fun outdoorCowIsNamed() {
+        val boxes = listOf(SubjectBox("cow", .66, .5, .55, .6, .5))
+        val s = SubjectReading.read(boxes, outdoorCues(), .3, 120.0, 0, .2, "MODEL")
+        assertEquals(SubjectCategory.ANIMAL, s.category)
+        assertEquals("소", s.subject)
+    }
+
+    @Test fun dogPhotoKeepsDogOverWeakPerson() {
+        val boxes = listOf(SubjectBox("dog", .66, .5, .55, .5, .5), SubjectBox("person", .32, .8, .4, .15, .3))
+        val s = SubjectReading.read(boxes, indoorCues(), .3, 110.0, 0, .2, "MODEL")
+        assertEquals("반려견", s.subject)
+    }
+
+    @Test fun quickSummaryIsThreeShortLinesWithoutNumbers() {
+        val a = CriticEngine.safeAssess(nima, measure(), emptyList(), scene(SubjectCategory.PERSON, "인물", 2, .86))
+        val score = Scoring.evaluate(6.1, a.evidence, Persona.BALANCED, Level.BALANCED)
+        val quick = CriticEngine.quickSummary(a, score)
+        for (body in listOf(quick.headline, quick.strength, quick.advice)) {
+            assertTrue("빈 요약", body.isNotBlank())
+            assertFalse("요약에 숫자 → $body", body.any { it.isDigit() })
+            banned.forEach { word -> assertFalse("요약에 '$word' → $body", body.contains(word)) }
+            assertTrue("요약이 너무 길다 → ${body.length}", body.length <= 320)
+        }
+        assertTrue(quick.headline.endsWith("."))
+        assertTrue(quick.headline, quick.headline.contains("두 사람"))
+    }
+
     @Test fun landscapeSceneWinsOverMisfiredObject() {
         val boxes = listOf(SubjectBox("bed", .61, .5, .64, .5, .4))
         val cues = SceneCues(

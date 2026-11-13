@@ -1,7 +1,9 @@
 package com.framecritic.app
 
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
@@ -30,10 +32,35 @@ data class BandStats(
 data class SceneCues(val top: BandStats, val middle: BandStats, val bottom: BandStats, val hasHorizon: Boolean)
 
 /** 한 피사체를 이름 붙일 때 쓰는 말. 갈래와 상자 크기 비교에 쓴다. */
-private data class Reading(val category: SubjectCategory, val name: String, val score: Double, val area: Double)
+private data class Reading(val label: String, val category: SubjectCategory, val name: String, val score: Double, val area: Double)
 
 object SubjectReading {
     private val PERSON_LABELS = setOf("person")
+
+    /** 일상에서 흔히 만나는 반려동물. 이름을 그대로 인정하되 최소 신뢰도를 둔다. */
+    private val COMPANION_LABELS = setOf("dog", "cat", "bird")
+
+    /**
+     * 소·말·곰처럼 사람 사진에서 오탐이 잦은 가축·야생동물.
+     * 실내나 도심에서는 0.85 이상일 때만 이름을 믿고, 그 밖에서는 0.60 이상을 요구한다.
+     */
+    private val LIVESTOCK_LABELS = setOf("cow", "sheep", "horse", "bear", "elephant", "zebra", "giraffe")
+
+    /** 탐지기가 문턱을 0.30까지 열어 두었으므로 여기서 한 번 더 거른다. */
+    private const val PERSON_FLOOR = .30
+    private const val COMPANION_FLOOR = .40
+    private const val LIVESTOCK_OUTDOOR_FLOOR = .60
+    private const val LIVESTOCK_INDOOR_FLOOR = .85
+    private const val DETECTION_FLOOR = .30
+    private const val DETECTION_AREA_FLOOR = .008
+
+    /**
+     * 같은 이름이 몇 개인지 셀 때, 중심이 이만큼 가까우면 한 대상으로 본다.
+     * 나란히 선 두 사람은 중심이 화면 폭의 15% 이상 떨어지지만, 한 사람의 얼굴·상체·전신 상자는
+     * 중심이 거의 같은 자리에 몰린다. 상자끼리 겹치는지만 보면 나란히 선 두 사람이 하나로 합쳐진다.
+     */
+    private const val SAME_TARGET_X = .15
+    private const val SAME_TARGET_Y = .22
 
     private val ANIMAL_LABELS = mapOf(
         "dog" to "반려견", "cat" to "고양이", "bird" to "새", "horse" to "말", "sheep" to "양",
@@ -55,11 +82,48 @@ object SubjectReading {
 
     private fun readingOf(label: String, score: Double, area: Double): Reading? {
         val key = label.lowercase()
-        if (key in PERSON_LABELS) return Reading(SubjectCategory.PERSON, "인물", score, area)
-        ANIMAL_LABELS[key]?.let { return Reading(SubjectCategory.ANIMAL, it, score, area) }
-        VEHICLE_LABELS[key]?.let { return Reading(SubjectCategory.VEHICLE, it, score, area) }
-        OBJECT_LABELS[key]?.let { return Reading(SubjectCategory.OBJECT_STILL, it, score, area) }
+        if (key in PERSON_LABELS) return Reading(key, SubjectCategory.PERSON, "인물", score, area)
+        ANIMAL_LABELS[key]?.let { return Reading(key, SubjectCategory.ANIMAL, it, score, area) }
+        VEHICLE_LABELS[key]?.let { return Reading(key, SubjectCategory.VEHICLE, it, score, area) }
+        OBJECT_LABELS[key]?.let { return Reading(key, SubjectCategory.OBJECT_STILL, it, score, area) }
         return null
+    }
+
+    /** 실내·도심·하늘처럼 가축이 있을 리 없는 장면. */
+    private fun domesticScene(scene: SceneContext): Boolean =
+        scene == SceneContext.INDOOR || scene == SceneContext.URBAN || scene == SceneContext.SKY
+
+    /** 이 장면에서 그 이름을 그대로 믿어도 되는지. 소·말 오탐을 걸러내는 자리다. */
+    private fun believable(label: String, score: Double, scene: SceneContext): Boolean = when {
+        label in COMPANION_LABELS -> score >= COMPANION_FLOOR
+        label in LIVESTOCK_LABELS -> score >= (if (domesticScene(scene)) LIVESTOCK_INDOOR_FLOOR else LIVESTOCK_OUTDOOR_FLOOR)
+        else -> true
+    }
+
+    /** 주인공을 고르는 무게중심. 면적만 키우면 큰 오탐이 이기고, 신뢰도만 보면 작은 디테일이 이긴다. */
+    private fun weightOf(reading: Reading): Double = reading.score.pow(1.5) * sqrt(max(0.0, reading.area))
+
+    /** 한 사진의 주인공 영역으로 받아들일 만한가. */
+    private fun acceptable(best: Reading): Boolean =
+        if (best.category == SubjectCategory.PERSON) best.score >= PERSON_FLOOR && best.area >= .01
+        else best.score >= .36 && best.area >= .015
+
+    /**
+     * 같은 이름의 탐지가 몇 개인지 센다. 상자가 아니라 중심을 모아 세므로,
+     * 한 사람을 여러 상자로 잡은 것과 나란히 선 두 사람을 구분한다.
+     */
+    private fun countOf(subjects: List<SubjectBox>, label: String, bestScore: Double): Int {
+        val floor = max(.42, bestScore * .6)
+        val centers = mutableListOf<SubjectBox>()
+        subjects
+            .filter { it.label.lowercase() == label }
+            .filter { it.confidence >= floor && it.w > 0 && it.h > 0 && it.w * it.h >= .01 }
+            .sortedByDescending { it.confidence }
+            .forEach { box ->
+                val same = centers.any { abs(it.cx - box.cx) < SAME_TARGET_X && abs(it.cy - box.cy) < SAME_TARGET_Y }
+                if (!same) centers += box
+            }
+        return min(3, centers.size)
     }
 
     /** 이름 하나가 어느 갈래인지만 돌려준다. 화면에 남길 상자를 고를 때 쓴다. */
@@ -102,26 +166,33 @@ object SubjectReading {
         separation: Double,
         source: String
     ): SubjectScene {
+        val (scene, label) = readScene(cues, saturation, luminance, lineCount)
         val readings = subjects
             .mapNotNull { readingOf(it.label, it.confidence, max(0.0, it.w) * max(0.0, it.h)) }
-            .filter { it.score >= .3 && it.area >= .01 }
-            .sortedByDescending { it.score * sqrt(it.area) }
-        val (scene, label) = readScene(cues, saturation, luminance, lineCount)
-        val best = readings.firstOrNull()
+            .filter { it.score >= DETECTION_FLOOR && it.area >= DETECTION_AREA_FLOOR }
+            .filter { believable(it.label, it.score, scene) }
+            .sortedByDescending { weightOf(it) }
+
+        // 인물이 잡혀 있으면, 소·말 같은 가축의 큰 상자가 주인공을 가져가지 못하게 한다.
+        val person = readings.firstOrNull { it.category == SubjectCategory.PERSON && it.score >= PERSON_FLOOR }
+        var best = readings.firstOrNull()
+        if (best != null && person != null && best.category == SubjectCategory.ANIMAL && best.label in LIVESTOCK_LABELS) {
+            val overwhelming = best.score >= .85 && best.score - person.score >= .15
+            if (!overwhelming) best = person
+        }
+
         val outdoorScene = scene == SceneContext.WATER || scene == SceneContext.NATURE ||
             scene == SceneContext.SKY || scene == SceneContext.URBAN
         // 야외 풍경으로 읽히는 화면에서 실내 사물 이름이 잡히면, 그 이름보다 장면을 믿는다.
         val objectMisfire = best?.category == SubjectCategory.OBJECT_STILL && outdoorScene
 
-        if (source == "MODEL" && best != null && !objectMisfire && best.score >= .4 && best.area >= .02) {
-            val count = min(3, readings.count {
-                it.category == best.category && it.name == best.name &&
-                    it.score >= max(.45, best.score * .8) && it.area >= .03
-            })
+        if (source == "MODEL" && best != null && !objectMisfire && acceptable(best)) {
+            val chosen = best
+            val count = countOf(subjects, chosen.label, chosen.score)
             val note = if (separation >= .35) " · 피사체와 배경이 밝기로 나뉨" else ""
             return SubjectScene(
-                best.category, best.name, count, best.score, scene, label, separation, source,
-                "${detectionEvidence(best, count)} · 장면 ${label}$note"
+                chosen.category, chosen.name, count, chosen.score, scene, label, separation, source,
+                "${detectionEvidence(chosen, count)} · 장면 ${label}$note"
             )
         }
 
@@ -146,7 +217,8 @@ object SubjectReading {
         val percent = Math.round(best.score * 100)
         return when (best.category) {
             SubjectCategory.ANIMAL -> "${best.name} ${if (count >= 2) "여러 마리" else "한 마리"} (신뢰도 ${percent}%)"
-            SubjectCategory.PERSON -> "인물 ${if (count >= 2) "여러 명" else "한 명"} (신뢰도 ${percent}%)"
+            SubjectCategory.PERSON ->
+                "인물 ${if (count >= 3) "여러 명" else if (count == 2) "2명" else "한 명"} (신뢰도 ${percent}%)"
             else -> "${best.name} (신뢰도 ${percent}%)"
         }
     }
@@ -223,7 +295,8 @@ object SubjectReading {
     }
 
     private fun personVoice(count: Int, seed: Int): SubjectVoice = SubjectVoice(
-        opening = if (count >= 2) "화면에는 사람이 둘 이상 있고, 사진의 관심은 그들 사이의 거리와 시선에 놓여 있습니다."
+        opening = if (count == 2) "화면에는 두 사람이 나란히 자리해 있고, 사진의 관심은 두 사람 사이의 거리와 시선에 놓여 있습니다."
+        else if (count >= 2) "화면에는 사람이 둘 이상 있고, 사진의 관심은 그들 사이의 거리와 시선에 놓여 있습니다."
         else "화면의 주인공은 한 사람이고, 사진의 관심은 그 얼굴과 시선에 모여 있습니다.",
         light = choose(seed, 301,
             "인물의 이마와 뺨에 얹힌 빛이 부드럽게 흐르고, 턱 아래로 지는 그림자가 얼굴의 입체를 만듭니다.",
@@ -232,7 +305,8 @@ object SubjectReading {
             "인물의 살색 온도가 장면의 색온도와 어긋나지 않아, 사람이 배경에서 떠 보이지 않고 같은 공기에 놓여 있습니다.",
             "인물의 얼굴색과 옷의 색이 서로를 받쳐 주어, 시선이 사람에게서 다른 곳으로 새지 않습니다."),
         composition = choose(seed, 303,
-            "인물이 화면의 한쪽에 서고 시선이 비어 있는 쪽을 향해, 그 여백이 인물의 생각처럼 남습니다.",
+            if (count == 2) "두 사람이 화면을 나누어 서고, 그 사이의 거리가 사진의 리듬이 됩니다."
+            else "인물이 화면의 한쪽에 서고 시선이 비어 있는 쪽을 향해, 그 여백이 인물의 생각처럼 남습니다.",
             "인물의 어깨선과 배경의 선이 나란히 놓여, 사진의 뼈대가 사람을 중심으로 서 있습니다."),
         texture = choose(seed, 304,
             "인물의 눈동자 윤기와 머리카락 결이 살아 있어, 얼굴을 가까이 들여다보게 됩니다.",
@@ -461,12 +535,16 @@ object SubjectReading {
         else -> null
     }
 
-    /** 피사체 이름과 수를 화면에 쓸 말로 정리한다. 예: '반려견 여러 마리', '인물', '그릇' */
+    /** 피사체 이름과 수를 화면에 쓸 말로 정리한다. 예: '반려견 여러 마리', '인물 2명', '그릇' */
     fun subjectWithCount(scene: SubjectScene): String {
+        if (scene.category == SubjectCategory.PERSON) {
+            if (scene.count >= 3) return "인물 여러 명"
+            if (scene.count == 2) return "인물 2명"
+            return scene.subject
+        }
         if (scene.count < 2) return scene.subject
         return when (scene.category) {
             SubjectCategory.ANIMAL -> "${scene.subject} 여러 마리"
-            SubjectCategory.PERSON -> "인물 여러 명"
             else -> "${scene.subject} 여러 개"
         }
     }
@@ -475,11 +553,6 @@ object SubjectReading {
     fun subjectLine(scene: SubjectScene): String {
         val sceneName = scene.sceneLabel.ifBlank { scene.scene.title }
         if (scene.category == SubjectCategory.GENERAL) return sceneName
-        val subject = if (scene.count >= 2) when (scene.category) {
-            SubjectCategory.ANIMAL -> "${scene.subject} 여러 마리"
-            SubjectCategory.PERSON -> "인물 여러 명"
-            else -> scene.subject
-        } else scene.subject
-        return "$subject · $sceneName"
+        return "${subjectWithCount(scene)} · $sceneName"
     }
 }

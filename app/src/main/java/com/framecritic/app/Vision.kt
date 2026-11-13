@@ -178,7 +178,7 @@ object Vision {
         if(bitmap.width<=0||bitmap.height<=0||bitmap.isRecycled) return emptyList()
         val options=ObjectDetector.ObjectDetectorOptions.builder()
             .setBaseOptions(baseOptions(model))
-            .setScoreThreshold(.35f).setMaxResults(8).build()
+            .setScoreThreshold(.30f).setMaxResults(10).build()
         // MediaPipe에는 원본이 아니라 복사본을 넘긴다. MPImage를 닫을 때 MediaPipe가 넘겨받은
         // 안드로이드 Bitmap을 recycle()하는 경로가 있어, 원본을 그대로 주면 화면이 그 사진을
         // 그리던 중 "Canvas: trying to use a recycled bitmap"으로 앱이 종료된다.
