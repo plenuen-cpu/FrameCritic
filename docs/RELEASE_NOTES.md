@@ -1,4 +1,4 @@
-# FrameCritic 2.3.0 · build 67
+# FrameCritic 2.3.0
 
 The critique now names what is in the photo. Instead of writing about "피사체", the engine says
 인물, 반려견, 고양이, 자동차, 바다, 물가, 산, 숲, 들판, 도심 or the object it actually found (그릇, 컵,
