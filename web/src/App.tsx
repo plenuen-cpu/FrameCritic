@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ScoreHero from './components/ScoreHero'
 import MeasurementPanel from './components/MeasurementPanel'
+import SubjectBadge from './components/SubjectBadge'
 import { analyzeImage, loadImage, type Analysis } from './lib/analyzer'
 import { nimaStatus, prepareNima, type NimaStatus } from './lib/nima'
+import { prepareVision } from './lib/vision'
 import {
   SECTION_TITLES,
   assess,
@@ -37,10 +39,10 @@ const LEVEL = LEVEL_BY_KEY.BALANCED
 
 /** 첫 화면에 보여 주는 NIMA 모델 준비 상태. */
 const MODEL_LABEL: Record<NimaStatus, string> = {
-  idle: '미적 점수는 브라우저에서 돌리는 NIMA 신경망이 계산합니다',
-  loading: 'NIMA 신경망을 준비하는 중입니다 (모델 13MB + 실행기, 한 번만 내려받습니다)',
-  ready: 'NIMA 신경망 준비 완료 · 사진은 기기 밖으로 나가지 않습니다',
-  unavailable: 'NIMA 모델을 불러오지 못해 측정값 기반 추정으로 분석합니다',
+  idle: '미적 점수와 피사체는 브라우저에서 돌리는 신경망이 직접 읽습니다',
+  loading: 'NIMA와 객체 탐지 신경망을 준비하는 중입니다 (모델 18MB + 실행기, 한 번만 내려받습니다)',
+  ready: '신경망 준비 완료 · 사진은 기기 밖으로 나가지 않습니다',
+  unavailable: '신경망을 불러오지 못해 측정값 기반 추정으로 분석합니다',
 }
 
 export default function App() {
@@ -58,6 +60,7 @@ export default function App() {
   useEffect(() => {
     setModelState('loading')
     void prepareNima().then(() => setModelState(nimaStatus()))
+    void prepareVision()
   }, [])
 
   const fileFromEvent = (event: React.DragEvent<HTMLDivElement>) => {
@@ -103,7 +106,7 @@ export default function App() {
         void (async () => {
           try {
             const analysis = await analyzeImage(source.image)
-            const assessment = assess(analysis.nima, analysis.measure, analysis.subjects)
+            const assessment = assess(analysis.nima, analysis.measure, analysis.subjects, analysis.scene)
             const score = evaluate(assessment.nima.aesthetic, assessment.evidence, PERSONA, LEVEL)
             const depthConfig = DEPTH_BY_KEY[depth]
             const critique = sections(assessment, {
@@ -225,18 +228,18 @@ export default function App() {
           <div className="space-y-3">
             <div className="relative overflow-hidden rounded-2xl border border-hairline bg-panel">
               <img src={image.url} alt="분석할 사진" className="w-full object-contain" />
-              {result?.analysis.salienceMap ? (
+              {result?.analysis.overlay ? (
                 <div
                   className="pointer-events-none absolute border border-dashed border-sage/60"
                   style={{
-                    left: `${result.analysis.salienceMap.x * 100}%`,
-                    top: `${result.analysis.salienceMap.y * 100}%`,
-                    width: `${result.analysis.salienceMap.w * 100}%`,
-                    height: `${result.analysis.salienceMap.h * 100}%`,
+                    left: `${result.analysis.overlay.x * 100}%`,
+                    top: `${result.analysis.overlay.y * 100}%`,
+                    width: `${result.analysis.overlay.w * 100}%`,
+                    height: `${result.analysis.overlay.h * 100}%`,
                   }}
                 >
                   <span className="absolute -top-5 left-0 bg-sage/90 px-1.5 py-0.5 text-[10px] text-viewfinder">
-                    주요 영역
+                    {result.analysis.overlay.label}
                   </span>
                 </div>
               ) : null}
@@ -305,7 +308,9 @@ export default function App() {
             <div className="h-[3px] w-full overflow-hidden rounded-full bg-hairline">
               <div className="h-full w-1/2 animate-pulse rounded-full bg-sage" />
             </div>
-            <p className="text-xs text-muted">픽셀을 재고, NIMA 신경망으로 미적 점수를 계산한 뒤 근거로 문장을 쓰는 중입니다.</p>
+            <p className="text-xs text-muted">
+              픽셀을 재고, NIMA 신경망으로 미적 점수를 계산하고, 객체 탐지기로 주인공을 찾은 뒤 근거로 문장을 쓰는 중입니다.
+            </p>
           </div>
         ) : null}
 
@@ -314,6 +319,8 @@ export default function App() {
         {result && stage !== 'working' ? (
           <div className="space-y-6">
             <ScoreHero score={result.score?.adjusted ?? null} verdict={result.verdict} />
+
+            <SubjectBadge scene={result.analysis.scene} source={result.analysis.visionSource} ms={result.analysis.visionMs} />
 
             <div className="space-y-3">
               {SECTION_TITLES.map((title) => (
@@ -329,6 +336,8 @@ export default function App() {
               score={result.score}
               nimaSource={result.analysis.nimaSource}
               nimaMs={result.analysis.nimaMs}
+              visionSource={result.analysis.visionSource}
+              visionMs={result.analysis.visionMs}
               elapsedMs={result.analysis.elapsedMs}
               size={{ width: result.analysis.width, height: result.analysis.height }}
             />

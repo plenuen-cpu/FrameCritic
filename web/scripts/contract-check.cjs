@@ -75,6 +75,100 @@ function buildImage(kind, width = 320, height = 240) {
   return data
 }
 
+/** 피사체·장면 조합. 화면 문장이 카테고리 어휘를 실제로 쓰는지 확인한다. */
+const SCENES = [
+  {
+    name: '인물',
+    scene: {
+      category: domain.SubjectCategory.PERSON,
+      subject: '인물',
+      count: 1,
+      confidence: 0.93,
+      scene: domain.SceneContext.INDOOR,
+      sceneLabel: '실내',
+      separation: 0.4,
+      source: 'MODEL',
+      evidence: '인물 한 명 (신뢰도 93%)',
+    },
+    expect: '인물',
+  },
+  {
+    name: '반려견',
+    scene: {
+      category: domain.SubjectCategory.ANIMAL,
+      subject: '반려견',
+      count: 2,
+      confidence: 0.81,
+      scene: domain.SceneContext.NATURE,
+      sceneLabel: '들판',
+      separation: 0.2,
+      source: 'MODEL',
+      evidence: '반려견 여러 마리 (신뢰도 81%)',
+    },
+    expect: '반려견',
+  },
+  {
+    name: '자동차',
+    scene: {
+      category: domain.SubjectCategory.VEHICLE,
+      subject: '자동차',
+      count: 1,
+      confidence: 0.77,
+      scene: domain.SceneContext.URBAN,
+      sceneLabel: '도심',
+      separation: 0.5,
+      source: 'MODEL',
+      evidence: '자동차 (신뢰도 77%)',
+    },
+    expect: '자동차',
+  },
+  {
+    name: '바다',
+    scene: {
+      category: domain.SubjectCategory.LANDSCAPE_WATER,
+      subject: '바다',
+      count: 0,
+      confidence: 0,
+      scene: domain.SceneContext.WATER,
+      sceneLabel: '바다',
+      separation: 0,
+      source: 'SCENE',
+      evidence: '물가 풍경',
+    },
+    expect: '바다',
+  },
+  {
+    name: '산',
+    scene: {
+      category: domain.SubjectCategory.LANDSCAPE_NATURE,
+      subject: '산',
+      count: 0,
+      confidence: 0,
+      scene: domain.SceneContext.NATURE,
+      sceneLabel: '산',
+      separation: 0,
+      source: 'SCENE',
+      evidence: '자연 풍경',
+    },
+    expect: '산',
+  },
+  {
+    name: '그릇',
+    scene: {
+      category: domain.SubjectCategory.OBJECT_STILL,
+      subject: '그릇',
+      count: 1,
+      confidence: 0.55,
+      scene: domain.SceneContext.INDOOR,
+      sceneLabel: '실내',
+      separation: 0.3,
+      source: 'MODEL',
+      evidence: '그릇 (신뢰도 55%)',
+    },
+    expect: '그릇',
+  },
+]
+
 let failures = 0
 let checked = 0
 function fail(label, detail) {
@@ -86,7 +180,10 @@ for (const kind of ['flat', 'gradient', 'sky', 'blown']) {
   const width = 320
   const height = 240
   const core = analyzer.measurePixels(buildImage(kind, width, height), width, height)
-  const assessment = engine.assess(core.nima, core.measure, core.subjects)
+
+  for (const sample of [{ name: '무피사체', scene: null, expect: null }, ...SCENES]) {
+  const scene = sample.scene
+  const assessment = engine.assess(core.nima, core.measure, core.subjects, scene)
 
   for (const persona of domain.PERSONAS) {
     for (const level of domain.LEVELS) {
@@ -113,23 +210,41 @@ for (const kind of ['flat', 'gradient', 'sky', 'blown']) {
       }
     }
   }
+    if (sample.expect) {
+      const out = engine.sections(assessment, {
+        persona: domain.PERSONA_BY_KEY.BALANCED,
+        level: domain.LEVEL_BY_KEY.BALANCED,
+        tone: 'MENTOR',
+        depth: domain.DEPTH_BY_KEY.STANDARD,
+          score: domain.evaluate(
+          assessment.nima.aesthetic,
+          assessment.evidence,
+          domain.PERSONA_BY_KEY.BALANCED,
+          domain.LEVEL_BY_KEY.BALANCED,
+        ),
+      })
+      const hit = engine.SECTION_TITLES.filter((title) => out[title].includes(sample.expect)).length
+      if (hit < 6) fail(`${kind} ${sample.name} 피사체 언급`, `${hit}/10 항목`)
+    }
+  }
 
   // 가장 긴 항목과 가장 짧은 항목을 남겨, 문장을 늘리거나 줄일 때 감이 잡히게 한다.
-  const sample = engine.sections(assessment, {
+  const plain = engine.assess(core.nima, core.measure, core.subjects)
+  const summaryOut = engine.sections(plain, {
     persona: domain.PERSONA_BY_KEY.BALANCED,
     level: domain.LEVEL_BY_KEY.BALANCED,
     tone: 'MENTOR',
     depth: domain.DEPTH_BY_KEY.STANDARD,
     score: domain.evaluate(
-      assessment.nima.aesthetic,
-      assessment.evidence,
+      plain.nima.aesthetic,
+      plain.evidence,
       domain.PERSONA_BY_KEY.BALANCED,
       domain.LEVEL_BY_KEY.BALANCED,
     ),
   })
-  const lengths = engine.SECTION_TITLES.map((title) => `${title}:${sample[title].length}`)
+  const lengths = engine.SECTION_TITLES.map((title) => `${title}:${summaryOut[title].length}`)
   console.log(`${kind} (밝기 ${core.measure.luminance.toFixed(0)}, 점수 ${domain
-    .evaluate(assessment.nima.aesthetic, assessment.evidence, domain.PERSONA_BY_KEY.BALANCED, domain.LEVEL_BY_KEY.BALANCED)
+    .evaluate(plain.nima.aesthetic, plain.evidence, domain.PERSONA_BY_KEY.BALANCED, domain.LEVEL_BY_KEY.BALANCED)
     .adjusted.toFixed(2)}) ${lengths.join(' ')}`)
 }
 

@@ -101,6 +101,70 @@ object Vision {
             mats.forEach{runCatching{it.release()}}
         }
     }
+    /**
+     * 비트맵을 위·가운데·아래 띠로 나누어 장면 근거를 모은다.
+     * 웹의 analyzer.ts가 픽셀 배열에서 하는 계산과 같은 값이다.
+     */
+    fun cues(bitmap:Bitmap):SceneCues? {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width <= 0 || height <= 0) return null
+        val stepX = max(1, width / 160)
+        val stepY = max(1, height / 160)
+        data class Acc(var r: Double = 0.0, var g: Double = 0.0, var b: Double = 0.0, var y: Double = 0.0,
+                       var y2: Double = 0.0, var n: Int = 0, var green: Int = 0, var blue: Int = 0, var bright: Int = 0)
+        val accs = listOf(Acc(), Acc(), Acc())
+        for (y in 0 until height step stepY) {
+            val acc = accs[if (y < height / 3) 0 else if (y < height * 2 / 3) 1 else 2]
+            for (x in 0 until width step stepX) {
+                val pixel = runCatching { bitmap.getPixel(x, y) }.getOrNull() ?: continue
+                val r = (pixel shr 16 and 0xFF).toDouble()
+                val g = (pixel shr 8 and 0xFF).toDouble()
+                val b = (pixel and 0xFF).toDouble()
+                val luma = .299 * r + .587 * g + .114 * b
+                acc.r += r; acc.g += g; acc.b += b; acc.y += luma; acc.y2 += luma * luma; acc.n++
+                if (g > r + 8 && g > b + 8) acc.green++
+                if (b > r + 8) acc.blue++
+                if (luma >= 200) acc.bright++
+            }
+        }
+        fun stats(acc: Acc): BandStats {
+            if (acc.n == 0) return BandStats(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            val mean = acc.y / acc.n
+            return BandStats(
+                acc.r / acc.n, acc.g / acc.n, acc.b / acc.n, mean,
+                sqrt(max(0.0, acc.y2 / acc.n - mean * mean)),
+                acc.green.toDouble() / acc.n, acc.blue.toDouble() / acc.n, acc.bright.toDouble() / acc.n
+            )
+        }
+        return SceneCues(stats(accs[0]), stats(accs[1]), stats(accs[2]), false)
+    }
+
+
+    /** 주인공 상자 안과 바깥의 밝기 차이. 0에 가까우면 같은 톤, 1에 가까우면 밝기로 나뉜다. */
+    fun separation(bitmap:Bitmap, box:SubjectBox):Double {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width <= 0 || height <= 0) return 0.0
+        val left = box.cx - box.w / 2
+        val right = box.cx + box.w / 2
+        val top = box.cy - box.h / 2
+        val bottom = box.cy + box.h / 2
+        var inside = 0.0; var insideCount = 0; var outside = 0.0; var outsideCount = 0
+        for (y in 0 until height step 4) {
+            val ny = y.toDouble() / height
+            for (x in 0 until width step 4) {
+                val nx = x.toDouble() / width
+                val pixel = runCatching { bitmap.getPixel(x, y) }.getOrNull() ?: continue
+                val luma = .299 * (pixel shr 16 and 0xFF) + .587 * (pixel shr 8 and 0xFF) + .114 * (pixel and 0xFF)
+                if (nx in left..right && ny in top..bottom) { inside += luma; insideCount++ }
+                else { outside += luma; outsideCount++ }
+            }
+        }
+        if (insideCount == 0 || outsideCount == 0) return 0.0
+        return (abs(inside / insideCount - outside / outsideCount) / 70.0).coerceIn(0.0, 1.0)
+    }
+
     /** 모델 파일을 자산 경로가 아니라 버퍼로 넘겨, 경로 해석 실패로 탐지가 통째로 비지 않게 한다. */
     private fun baseOptions(model:File):BaseOptions {
         val bytes=model.readBytes()

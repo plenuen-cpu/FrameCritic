@@ -8,7 +8,7 @@ import java.io.File
 import java.util.Locale
 import kotlin.math.hypot
 
-data class Analysis(val nima:NimaResult,val metrics:Metrics,val subjects:List<Subject>,val assessment:Assessment,val warnings:List<String>,val elapsedMs:Long)
+data class Analysis(val nima:NimaResult,val metrics:Metrics,val subjects:List<Subject>,val assessment:Assessment,val warnings:List<String>,val elapsedMs:Long,val scene:SubjectScene?=null)
 data class Report(val persona:Persona,val level:Level,val tone:Tone,val depth:Depth,val score:ScoreResult?,val sections:Map<String,String>,val failure:String?) {
     /**
      * 복사용 텍스트. 본문은 화면과 같은 자연스러운 비평 문장이고,
@@ -133,15 +133,23 @@ object Pipeline {
         val boxes=subjects.map{
             SubjectBox(it.label,it.confidence.toDouble(),it.box.centerX().toDouble(),it.box.centerY().toDouble(),it.box.width().toDouble(),it.box.height().toDouble())
         }
+        // 주인공과 장면을 읽는다. 탐지 결과(이름·신뢰도)와 픽셀 띠 근거만 쓴다.
+        val cues=runCatching{Vision.cues(bitmap)}.getOrNull()
+        val primary=boxes.maxByOrNull{it.confidence*sqrt(it.w*it.h)}
+        val separation=if(primary!=null&&cues!=null) runCatching{Vision.separation(bitmap,primary)}.getOrDefault(0.0) else 0.0
+        val scene=SubjectReading.read(boxes,cues,measure.saturation,measure.luminance,measure.lines.size,separation,"MODEL")
+        // 장면 자체가 주인공인 풍경에서는 엉뚱한 사물 이름이 본문에 끼어들지 않게 상자를 비운다.
+        val landscape=scene.category==SubjectCategory.LANDSCAPE_WATER||scene.category==SubjectCategory.LANDSCAPE_NATURE||scene.category==SubjectCategory.URBAN_ARCHITECTURE
+        val usable=if(landscape) emptyList() else boxes.filter{SubjectReading.categoryOf(it.label)==scene.category}
         val assessment=try {
-            CriticEngine.safeAssess(nima,measure,boxes)
+            CriticEngine.safeAssess(nima,measure,usable,scene)
         } catch(e:CancellationException) {
             throw e
         } catch(e:Throwable) {
             warnings+="관찰 근거 종합 실패(${reason(e)}) · 항목별 중립 근거로 대체했습니다."
-            CriticEngine.safeAssess(Neutral.nima(),measure,emptyList())
+            CriticEngine.safeAssess(Neutral.nima(),measure,emptyList(),scene)
         }
-        return Analysis(nima,metrics,subjects,assessment,warnings,System.currentTimeMillis()-start)
+        return Analysis(nima,metrics,subjects,assessment,warnings,System.currentTimeMillis()-start,scene)
     }
 
     /** 화면에 보여줄 수 있는 최소한의 결과. 어떤 경로에서도 앱이 빈 상태로 남지 않게 한다. */

@@ -20,9 +20,11 @@ import {
   Persona,
   PersonaKey,
   ScoreResult,
+  SubjectScene,
   ToneKey,
   evaluate,
 } from './domain'
+import { KO_LABELS, buildVoice } from './subject'
 
 export interface LineCandidate {
   angle: number
@@ -187,6 +189,8 @@ export interface Assessment {
   nima: NimaResult
   measure: Measure
   subjects: SubjectBox[]
+  /** 사진의 주인공과 장면. 읽지 못했으면 null이다. */
+  scene: SubjectScene | null
   evidence: Evidence[]
   observations: Record<string, string>
   description: string
@@ -214,88 +218,8 @@ const HUE_NAMES = [
   '분홍',
 ]
 
-const LABELS: Record<string, string> = {
-  person: '인물',
-  bicycle: '자전거',
-  car: '자동차',
-  motorcycle: '오토바이',
-  airplane: '비행기',
-  bus: '버스',
-  train: '기차',
-  truck: '트럭',
-  boat: '배',
-  'traffic light': '신호등',
-  bench: '벤치',
-  bird: '새',
-  cat: '고양이',
-  dog: '개',
-  horse: '말',
-  sheep: '양',
-  cow: '소',
-  elephant: '코끼리',
-  bear: '곰',
-  zebra: '얼룩말',
-  giraffe: '기린',
-  backpack: '배낭',
-  umbrella: '우산',
-  handbag: '가방',
-  tie: '넥타이',
-  suitcase: '여행 가방',
-  frisbee: '원반',
-  skis: '스키',
-  snowboard: '스노보드',
-  'sports ball': '공',
-  kite: '연',
-  'baseball bat': '야구 방망이',
-  'baseball glove': '야구 글러브',
-  skateboard: '스케이트보드',
-  surfboard: '서핑보드',
-  'tennis racket': '테니스 라켓',
-  bottle: '병',
-  'wine glass': '와인잔',
-  cup: '컵',
-  fork: '포크',
-  knife: '칼',
-  spoon: '숟가락',
-  bowl: '그릇',
-  banana: '바나나',
-  apple: '사과',
-  sandwich: '샌드위치',
-  orange: '오렌지',
-  broccoli: '브로콜리',
-  carrot: '당근',
-  'hot dog': '핫도그',
-  pizza: '피자',
-  donut: '도넛',
-  cake: '케이크',
-  chair: '의자',
-  couch: '소파',
-  'potted plant': '화분',
-  bed: '침대',
-  'dining table': '식탁',
-  toilet: '변기',
-  tv: '모니터',
-  laptop: '노트북',
-  mouse: '마우스',
-  remote: '리모컨',
-  keyboard: '키보드',
-  'cell phone': '휴대폰',
-  microwave: '전자레인지',
-  oven: '오븐',
-  toaster: '토스터',
-  sink: '싱크대',
-  refrigerator: '냉장고',
-  book: '책',
-  clock: '시계',
-  vase: '꽃병',
-  scissors: '가위',
-  'teddy bear': '곰인형',
-  'hair drier': '헤어드라이어',
-  toothbrush: '칫솔',
-  /** 웹은 객체 검출기 대신 밝기·에지 밀도로 눈에 띄는 영역을 찾는다. */
-  salience: '주요 영역',
-}
-
+/** COCO 이름의 한국어 표기는 subject.ts 한 곳에서만 관리한다. */
+const LABELS: Record<string, string> = KO_LABELS
 /** 화면 본문에 보여줄 비평 항목. 수치는 이 목록이 아니라 measurements()에만 담는다. */
 export const SECTION_TITLES = [
   '종합 크리틱',
@@ -408,7 +332,12 @@ function neutralAx(): Ax {
   }
 }
 
-export function assess(nima: NimaResult, measure: Measure, subjects: SubjectBox[]): Assessment {
+export function assess(
+  nima: NimaResult,
+  measure: Measure,
+  subjects: SubjectBox[],
+  scene: SubjectScene | null = null,
+): Assessment {
   const sorted = subjects
     .filter(
       (s) =>
@@ -458,14 +387,19 @@ export function assess(nima: NimaResult, measure: Measure, subjects: SubjectBox[
   } catch {
     /* 기본 문장을 그대로 둔다. */
   }
-  return { nima, measure, subjects: sorted, evidence, observations, description }
+  return { nima, measure, subjects: sorted, scene, evidence, observations, description }
 }
 
 function clampRange(v: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, v))
 }
 
-export function neutralAssessment(nima: NimaResult, measure: Measure, subjects: SubjectBox[]): Assessment {
+export function neutralAssessment(
+  nima: NimaResult,
+  measure: Measure,
+  subjects: SubjectBox[],
+  scene: SubjectScene | null = null,
+): Assessment {
   const evidence: Evidence[] = AXIS_ORDER.map((axis) => ({
     score: 0.5,
     confidence: CONFIDENCE_FLOOR,
@@ -480,17 +414,23 @@ export function neutralAssessment(nima: NimaResult, measure: Measure, subjects: 
     nima,
     measure,
     subjects,
+    scene,
     evidence,
     observations,
     description: '측정값 요약을 만들지 못해 항목별 근거만 남겼습니다.',
   }
 }
 
-export function safeAssess(nima: NimaResult, measure: Measure, subjects: SubjectBox[]): Assessment {
+export function safeAssess(
+  nima: NimaResult,
+  measure: Measure,
+  subjects: SubjectBox[],
+  scene: SubjectScene | null = null,
+): Assessment {
   try {
-    return assess(nima, measure, subjects)
+    return assess(nima, measure, subjects, scene)
   } catch {
-    return neutralAssessment(nima, measure, subjects)
+    return neutralAssessment(nima, measure, subjects, scene)
   }
 }
 
@@ -1059,6 +999,14 @@ function compPlacement(m: Measure, subjects: SubjectBox[], seed: number): string
   if (!main) return compNoSubject(m, seed)
   const label = koLabel(main.label)
   const d = nearestThirds(main.cx, main.cy)
+  const centered = Math.abs(main.cx - 0.5) <= 0.07 && Math.abs(main.cy - 0.5) <= 0.07
+  if (centered)
+    return say(
+      seed,
+      105,
+      `${eun(label)} 화면의 한가운데에 놓여 있습니다. 정면의 대칭이 안정을 만들고, 사진이 대상을 향해 정면으로 말합니다.`,
+      `${eun(label)} 중심을 지키고 있습니다. 좌우의 무게가 비슷해 화면이 조용하고, 시선이 흔들리지 않습니다.`,
+    )
   if (d <= 0.1)
     return say(
       seed,
@@ -2138,7 +2086,9 @@ function summary(
   const seed = seedOf(m)
   const best = top[0]
   const weakest = weak[0]
-  const first = [openingFor(s10), frameBreath(m, seed), lightColorUnion(m, seed)]
+  const voice = buildVoice(a.scene, seed)
+  const opening = voice ? `${voice.opening} ${openingFor(s10)}` : openingFor(s10)
+  const first = [opening, frameBreath(m, seed), lightColorUnion(m, seed)]
   const second = [gazeAnchor(a, seed), spatialDepth(m, a.subjects, seed), highlight(best, a, seed)]
   const third = [
     `${eun(AXIS_TITLES[weakest])} 이 사진에서 먼저 살펴볼 지점입니다. ${shortNote(weakest)}`,
@@ -2199,13 +2149,15 @@ function lightSection(a: Assessment, tone: ToneKey, limit: number): string {
   const score = a.evidence[Axis.LIGHTING].score
   const reading = lightReading(m, score)
   const advice = lightAdvice(m, tone, band(score) === 2)
+  const voice = buildVoice(a.scene, seed)
+  const subjectLight = voice?.light ?? lightTexture(m, seed)
   const items =
     limit <= 4
-      ? [lightTone(m, seed), lightRange(m, seed), reading, advice]
+      ? [lightTone(m, seed), subjectLight, reading, advice]
       : [
           lightTone(m, seed),
           lightRange(m, seed),
-          lightTexture(m, seed),
+          subjectLight,
           lightShadow(m, seed),
           reading,
           advice,
@@ -2222,12 +2174,14 @@ function colorSection(a: Assessment, tone: ToneKey, limit: number): string {
   const score = a.evidence[Axis.COLOR].score
   const reading = colorReading(m, score)
   const advice = colorAdvice(m, tone, band(score) === 2)
+  const voice = buildVoice(a.scene, seed)
+  const subjectColor = voice?.color ?? colorPigment(m, seed)
   const items =
     limit <= 4
-      ? [colorTemperature(m, seed), colorPigment(m, seed), reading, advice]
+      ? [colorTemperature(m, seed), subjectColor, reading, advice]
       : [
           colorTemperature(m, seed),
-          colorPigment(m, seed),
+          subjectColor,
           colorAir(m, seed),
           colorUnion(m, seed),
           reading,
@@ -2245,14 +2199,16 @@ function compositionSection(a: Assessment, tone: ToneKey, limit: number): string
   const score = a.evidence[Axis.COMPOSITION].score
   const reading = compReading(m, a.subjects, score)
   const advice = compAdvice(m, a.subjects, tone, band(score) === 2)
+  const voice = buildVoice(a.scene, seed)
+  const subjectComposition = voice?.composition ?? compBalance(m, a.subjects, seed)
   const items =
     limit <= 4
-      ? [compPlacement(m, a.subjects, seed), compLines(m, seed), reading, advice]
+      ? [compPlacement(m, a.subjects, seed), subjectComposition, reading, advice]
       : [
           compPlacement(m, a.subjects, seed),
           compLines(m, seed),
           compSpace(m, a.subjects, seed),
-          compBalance(m, a.subjects, seed),
+          subjectComposition,
           reading,
           advice,
           compFlow(m, a.subjects, seed),
@@ -2268,12 +2224,14 @@ function sharpnessSection(a: Assessment, tone: ToneKey, limit: number): string {
   const score = a.evidence[Axis.SHARPNESS].score
   const reading = sharpReading(m, score)
   const advice = sharpAdvice(m, tone, band(score) === 2)
+  const voice = buildVoice(a.scene, seed)
+  const subjectTexture = voice?.texture ?? sharpTexture(m, seed)
   const items =
     limit <= 4
-      ? [sharpFocus(m, seed), sharpTexture(m, seed), reading, advice]
+      ? [sharpFocus(m, seed), subjectTexture, reading, advice]
       : [
           sharpFocus(m, seed),
-          sharpTexture(m, seed),
+          subjectTexture,
           sharpSpace(m, a.subjects, seed),
           reading,
           advice,
@@ -2291,17 +2249,19 @@ function moodSection(a: Assessment, tone: ToneKey, limit: number): string {
   const human = a.subjects.some((s) => HUMAN.has(s.label.toLowerCase()))
   const reading = moodReading(a)
   const advice = moodAdvice(tone, human, a.subjects.length === 0)
+  const voice = buildVoice(a.scene, seed)
+  const subjectMood = voice?.mood ?? moodAfter(m, seed)
   const items =
     limit <= 4
-      ? [moodTone(m, seed), moodPresence(m, a.subjects, seed), reading, advice]
+      ? [moodTone(m, seed), subjectMood, reading, advice]
       : [
           moodTone(m, seed),
           moodPresence(m, a.subjects, seed),
+          subjectMood,
           moodStillness(m, a.subjects, seed),
           moodStory(m, a.subjects, seed),
           reading,
           advice,
-          moodAfter(m, seed),
           moodBreath(m, a.subjects, seed),
           reflection(Axis.EMOTION, a),
         ]
@@ -2326,7 +2286,10 @@ function strengths(a: Assessment, top: number[], limit: number): string {
   const second = AXIS_TITLES[top[1]]
   const best = a.evidence[top[0]].score
   const secondScore = a.evidence[top[1]].score
-  const items = [strengthFrame(top, a), praise(top[0], a), praise(top[1], a)]
+  const voice = buildVoice(a.scene, seed)
+  const items = [strengthFrame(top, a)]
+  if (voice) items.push(voice.praise)
+  items.push(praise(top[0], a), praise(top[1], a))
   if (best >= 0.72 && secondScore >= 0.6)
     items.push(
       '두 지점이 같은 방향을 가리키고 있어, 사진의 인상이 한 번에 정리됩니다. 강점이 여럿 흩어진 사진보다, 둘이 겹친 사진이 기억에 오래 남습니다.',
@@ -2343,6 +2306,7 @@ function improvements(a: Assessment, level: Level, tone: ToneKey, weak: number[]
   const seed = seedOf(a.measure)
   const first = AXIS_TITLES[weak[0]]
   const second = AXIS_TITLES[weak[1]]
+  const voice = buildVoice(a.scene, seed)
   const items = [
     level.key === 'GENEROUS'
       ? `지금 값에서 조금만 밀어 올리면 좋아질 지점은 ${wa(first)} ${second}입니다.`
@@ -2352,6 +2316,7 @@ function improvements(a: Assessment, level: Level, tone: ToneKey, weak: number[]
     refine(weak[0], a),
     refine(weak[1], a),
   ]
+  if (voice) items.splice(1, 0, voice.refine)
   items.push(`둘 중 하나만 고르라면 ${first} 쪽을 먼저 손보시는 편이 좋습니다. 사진의 인상이 가장 크게 흔들리는 곳이 그쪽입니다.`)
   items.push('이 지점들은 사진을 다시 찍지 않아도 일부는 보정으로 정리할 수 있습니다. 다만 원본에 남아 있지 않은 정보를 만들어 낼 수는 없습니다.')
   items.push(
@@ -2405,6 +2370,7 @@ function shotExposure(a: Assessment, tone: ToneKey): string {
 }
 
 function shooting(a: Assessment, tone: ToneKey, depth: Depth, weak: number[]): string {
+  const voice = buildVoice(a.scene, seedOf(a.measure))
   const items = [
     tone === 'MENTOR'
       ? '다음 장에서는 이렇게 잡아 보시면 좋겠습니다.'
@@ -2413,6 +2379,7 @@ function shooting(a: Assessment, tone: ToneKey, depth: Depth, weak: number[]): s
         : '촬영 제안은 근거가 약한 두 항목을 보완하는 순서로 적었습니다.',
     shootAdvice(weak[0], a, tone),
     shootAdvice(weak[1], a, tone),
+    ...(voice ? [voice.shoot] : []),
     shotAngle(a, tone),
     shotDistance(a, tone),
     shotExposure(a, tone),
@@ -2425,6 +2392,7 @@ function shooting(a: Assessment, tone: ToneKey, depth: Depth, weak: number[]): s
 
 function editing(a: Assessment, tone: ToneKey, depth: Depth, weak: number[]): string {
   const m = a.measure
+  const voice = buildVoice(a.scene, seedOf(m))
   const items = [
     tone === 'MENTOR'
       ? '보정은 원본이 담고 있는 정보 안에서 마무리하시면 좋겠습니다.'
@@ -2433,6 +2401,7 @@ function editing(a: Assessment, tone: ToneKey, depth: Depth, weak: number[]): st
         : '보정은 화면의 밝기와 색 값을 바꾸는 작업이므로, 바꾼 뒤의 균형을 다시 확인하십시오.',
     editAdvice(weak[0], a, tone),
     editAdvice(weak[1], a, tone),
+    ...(voice ? [voice.edit] : []),
   ]
   if (m.highlights > 0.02)
     items.push('밝은 쪽은 하이라이트 슬라이더를 낮추고, 톤 커브의 어깨를 부드럽게 만들어 흰색으로 눌린 결을 되살리는 편이 좋겠습니다.')

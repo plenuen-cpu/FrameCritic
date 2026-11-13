@@ -12,10 +12,13 @@
  * 휴리스틱으로 대체하고 화면에 '추정'으로 표기한다.
  */
 
-import type { NimaResult, NimaSource } from './domain'
+import { SubjectCategory } from './domain'
+import type { NimaResult, NimaSource, SubjectScene } from './domain'
 import { inferNima, toNimaResult } from './nima'
 import { Measure, SubjectBox } from './critic-engine'
 import type { LineCandidate } from './critic-engine'
+import { detectSubjects } from './vision'
+import { categoryOf, readSubject, type BandStats, type SceneCues } from './subject'
 
 export interface Analysis {
   measure: Measure
@@ -23,10 +26,17 @@ export interface Analysis {
   nimaSource: NimaSource
   nimaMs: number
   subjects: SubjectBox[]
+  /** 사진의 주인공과 장면. 탐지기와 픽셀 근거로 읽는다. */
+  scene: SubjectScene
+  /** 화면 위에 표시할 주인공 영역. 없으면 null. */
+  overlay: { x: number; y: number; w: number; h: number; label: string } | null
+  /** 탐지기를 실제로 돌렸는지. */
+  visionSource: 'MODEL' | 'SCENE'
+  visionMs: number
   elapsedMs: number
   width: number
   height: number
-  salienceMap: { x: number; y: number; w: number; h: number } | null
+  cues: SceneCues
 }
 
 const MAX_SIDE = 1280
@@ -312,10 +322,82 @@ function estimateNima(
   }
 }
 
+/** 띠 하나를 세는 누산기. 화면을 위·가운데·아래로 나누어 장면을 가른다. */
+interface BandAcc {
+  r: number
+  g: number
+  b: number
+  y: number
+  y2: number
+  count: number
+  green: number
+  blue: number
+  bright: number
+}
+
+function bandAcc(): BandAcc {
+  return { r: 0, g: 0, b: 0, y: 0, y2: 0, count: 0, green: 0, blue: 0, bright: 0 }
+}
+
+function bandStats(acc: BandAcc): BandStats {
+  if (acc.count === 0)
+    return { r: 0, g: 0, b: 0, luminance: 0, texture: 0, green: 0, blue: 0, bright: 0 }
+  const mean = acc.y / acc.count
+  return {
+    r: acc.r / acc.count,
+    g: acc.g / acc.count,
+    b: acc.b / acc.count,
+    luminance: mean,
+    texture: Math.sqrt(Math.max(0, acc.y2 / acc.count - mean * mean)),
+    green: acc.green / acc.count,
+    blue: acc.blue / acc.count,
+    bright: acc.bright / acc.count,
+  }
+}
+
+/**
+ * 주인공 상자 안과 바깥의 밝기 차이. 피사체가 배경에서 얼마나 떨어져 보이는지의 근거다.
+ * 0에 가까우면 같은 톤으로 이어지고, 1에 가까우면 밝기로 분명히 나뉜다.
+ */
+function separationOf(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  box: { cx: number; cy: number; w: number; h: number },
+): number {
+  const left = box.cx - box.w / 2
+  const right = box.cx + box.w / 2
+  const top = box.cy - box.h / 2
+  const bottom = box.cy + box.h / 2
+  let inside = 0
+  let insideCount = 0
+  let outside = 0
+  let outsideCount = 0
+  for (let y = 0; y < height; y += 4) {
+    const ny = y / height
+    for (let x = 0; x < width; x += 4) {
+      const nx = x / width
+      const i = (y * width + x) * 4
+      const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+      if (nx >= left && nx <= right && ny >= top && ny <= bottom) {
+        inside += luma
+        insideCount++
+      } else {
+        outside += luma
+        outsideCount++
+      }
+    }
+  }
+  if (insideCount === 0 || outsideCount === 0) return 0
+  return clamp(Math.abs(inside / insideCount - outside / outsideCount) / 70, 0, 1)
+}
+
 export interface PixelMeasurement {
   measure: Measure
   nima: NimaResult
   subjects: SubjectBox[]
+  cues: SceneCues
+  /** 눈에 띄는 영역. 탐지기를 못 쓸 때 대신 쓴다. */
   salienceMap: { x: number; y: number; w: number; h: number } | null
 }
 
@@ -336,6 +418,7 @@ export function measurePixels(data: Uint8ClampedArray, width: number, height: nu
   let highlights = 0
   let shadows = 0
   let sumSaturation = 0
+  const bands = [bandAcc(), bandAcc(), bandAcc()]
 
   for (let i = 0, p = 0; i < data.length && p < pixels; i += 4, p++) {
     const r = data[i]
@@ -352,6 +435,18 @@ export function measurePixels(data: Uint8ClampedArray, width: number, height: nu
     sumR += r
     sumG += g
     sumB += b
+
+    const row = Math.floor(p / width)
+    const acc = bands[row < height / 3 ? 0 : row < (height * 2) / 3 ? 1 : 2]
+    acc.r += r
+    acc.g += g
+    acc.b += b
+    acc.y += y
+    acc.y2 += y * y
+    acc.count += 1
+    if (g > r + 8 && g > b + 8) acc.green += 1
+    if (b > r + 8) acc.blue += 1
+    if (bin >= 200) acc.bright += 1
 
     const max = Math.max(r, g, b)
     const min = Math.min(r, g, b)
@@ -378,6 +473,12 @@ export function measurePixels(data: Uint8ClampedArray, width: number, height: nu
   const lines = horizontalLines(gray, width, height)
   const saliency = salience(gray, width, height)
   const subjects = saliency ? [saliency.box] : []
+  const cues: SceneCues = {
+    top: bandStats(bands[0]),
+    middle: bandStats(bands[1]),
+    bottom: bandStats(bands[2]),
+    hasHorizon: lines.some((line) => Math.abs(line.angle) <= 3),
+  }
 
   const measure = new Measure({
     width,
@@ -411,12 +512,13 @@ export function measurePixels(data: Uint8ClampedArray, width: number, height: nu
     measure,
     nima,
     subjects,
+    cues,
     salienceMap: saliency?.rect ?? null,
   }
 }
 
 /**
- * 사진 한 장을 재고, 비평 엔진이 쓸 Measure와 NIMA 점수를 만든다.
+ * 사진 한 장을 재고, 비평 엔진이 쓸 Measure·NIMA 점수·피사체와 장면을 만든다.
  * 픽셀 측정은 동기로 끝나고, 신경망 추론(모델 첫 로딩 포함)만 기다린다.
  */
 export async function analyzeImage(image: HTMLImageElement | ImageBitmap): Promise<Analysis> {
@@ -424,15 +526,76 @@ export async function analyzeImage(image: HTMLImageElement | ImageBitmap): Promi
   const { ctx, width, height } = drawToCanvas(image)
   const data = ctx.getImageData(0, 0, width, height).data
   const core = measurePixels(data, width, height)
-  const inference = await inferNima(image)
+  // 두 신경망은 서로 독립이므로 함께 돌린다. 첫 로딩만 기다리고, 그 뒤로는 각자 짧다.
+  const [inference, vision] = await Promise.all([inferNima(image), detectSubjects(image)])
+
+  const detected = vision?.detections ?? []
+  const primary = detected
+    .slice()
+    .sort((a, b) => b.score * Math.sqrt(b.w * b.h) - a.score * Math.sqrt(a.w * a.h))[0]
+  const separation = primary ? separationOf(data, width, height, primary) : 0
+  const scene = readSubject(
+    detected,
+    core.cues,
+    core.measure.saturation,
+    core.measure.luminance,
+    core.measure.lines.length,
+    separation,
+    vision ? 'MODEL' : 'SCENE',
+  )
+
+  /**
+   * 장면 자체가 주인공인 풍경에서는 탐지기가 엉뚱한 사물(예: 물결을 침대로)을 잡을 수 있다.
+   * 그런 사진에서는 탐지 상자 대신 '주요 영역'만 남겨, 본문이 잘못된 사물 이름을 말하지 않게 한다.
+   */
+  const landscape =
+    scene.category === SubjectCategory.LANDSCAPE_WATER ||
+    scene.category === SubjectCategory.LANDSCAPE_NATURE ||
+    scene.category === SubjectCategory.URBAN_ARCHITECTURE
+  const usable = landscape
+    ? []
+    : detected.filter((d) => {
+        const category = categoryOf(d.label)
+        return category !== null && category === scene.category
+      })
+  const boxes = usable.map(
+    (d) =>
+      new SubjectBox({
+        label: scene.count > 0 && !landscape ? scene.subject : d.label,
+        confidence: d.score,
+        cx: d.cx,
+        cy: d.cy,
+        w: d.w,
+        h: d.h,
+      }),
+  )
+  const subjects = boxes.length > 0 ? boxes : core.subjects
+  const overlay = boxes.length > 0
+    ? {
+        x: boxes[0].cx - boxes[0].w / 2,
+        y: boxes[0].cy - boxes[0].h / 2,
+        w: boxes[0].w,
+        h: boxes[0].h,
+        label: scene.subject,
+      }
+    : core.salienceMap
+      ? { ...core.salienceMap, label: '주요 영역' }
+      : null
+
   return {
-    ...core,
+    measure: core.measure,
     nima: inference ? toNimaResult(inference) : core.nima,
     nimaSource: inference ? 'MODEL' : 'ESTIMATE',
     nimaMs: inference?.modelMs ?? 0,
+    subjects,
+    scene,
+    overlay,
+    visionSource: vision ? 'MODEL' : 'SCENE',
+    visionMs: vision?.modelMs ?? 0,
     elapsedMs: Math.max(1, Math.round(performance.now() - started)),
     width,
     height,
+    cues: core.cues,
   }
 }
 

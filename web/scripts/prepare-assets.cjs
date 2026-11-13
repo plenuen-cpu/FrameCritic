@@ -27,6 +27,7 @@ const CORE_WASM = join(WEB_ROOT, 'node_modules/@litertjs/core/wasm')
 const MODELS = {
   'nima_aesthetic.tflite': 'nima_aesthetic.tflite',
   'nima_technical.tflite': 'nima_technical.tflite',
+  'objects.tflite': 'objects.tflite',
 }
 
 /**
@@ -45,6 +46,12 @@ const FALLBACK_ENTRIES = [
     url: 'https://huggingface.co/litert-community/NIMA-LiteRT/resolve/5e27e756cf38d2e738ee0c7c5d6f1c43f2073038/nima_technical_fp16.tflite',
     sha256: '34fe245d9b6ae14f48cc1b0e276b93d18b905083dafe24f502e862dd8b81f0fa',
     size: 6449632,
+  },
+  {
+    name: 'objects.tflite',
+    url: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite',
+    sha256: '0720bf247bd76e6594ea28fa9c6f7c5242be774818997dbbeffc4da460c723bb',
+    size: 4602795,
   },
 ]
 

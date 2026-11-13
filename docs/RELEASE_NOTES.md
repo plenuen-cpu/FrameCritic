@@ -1,7 +1,8 @@
-# FrameCritic 2.2.0 · build 66
+# FrameCritic 2.3.0 · build 67
 
-Build 66 makes the critique read like a photo essayist rather than a caption, and ships the same
-engine as a browser app that needs no install.
+The critique now names what is in the photo. Instead of writing about "피사체", the engine says
+인물, 반려견, 고양이, 자동차, 바다, 물가, 산, 숲, 들판, 도심 or the object it actually found (그릇, 컵,
+노트북 …), and every section is written in that subject's own vocabulary.
 
 **Install note:** this APK is signed with the CI debug key, which differs from run to run. Uninstall
 the previous FrameCritic before installing (`adb install -r` will fail with a signature mismatch).
@@ -9,14 +10,53 @@ After installing, the header must read a build number that matches this release 
 `offline-v2-`); if it does not, the old build is still the one running.
 
 Downloads:
-- `FrameCritic-2.0.0-arm64.apk`: installable APK (~65 MB). The file name keeps the 2.0 lineage that
-  the release job has used since build 53; the app inside reports `v2.2.0`.
+- `FrameCritic-2.0.0-arm64.apk`: installable APK. The file name keeps the 2.0 lineage that the
+  release job has used since build 53; the app inside reports `v2.3.0`.
 - `FrameCritic-2.0.0-source-with-models.zip`: complete Android Studio project, pinned weight files,
   licenses and Gradle wrapper.
-- `FrameCritic-verification.zip`: Android build reports and Linux CPU inference outputs for the
-  pinned NIMA/MediaPipe weights.
+- `FrameCritic-verification.zip`: Android build reports and Linux CPU inference outputs.
 
 ## What changed in this build
+
+**A subject reading, shared by the app and the web app.** `SubjectCategory` (person, animal,
+vehicle, landscape-water, landscape-nature, urban, still object, general) and `SceneContext`
+(indoor, outdoor, urban, nature, water, sky, night) now live in `Domain.kt` and `domain.ts`.
+`Subject.kt` / `subject.ts` turn the detector's boxes and the scene cues into one `SubjectScene`:
+the subject's name, how many of them were found, the detector's confidence, the scene label, and
+whether the subject separates from its background by brightness.
+
+**Ten sections that speak about that subject.** The opening paragraph of 종합 크리틱 names it, and
+빛과 노출, 색채, 구도, 선명도와 질감, 분위기와 순간, 잘 살아난 점, 더 다듬을 점, 촬영 제안, 보정 제안
+each carry a sentence written for that category — rim light on fur, chrome highlights along a car's
+shoulder, an eye-line at a low angle, a horizon dividing sky and water, a mountain ridge fading
+with distance, a pot's shadow on a windowsill. Both sentence variants of every slot mention the
+subject, so the word appears in at least six of the ten sections whatever the seed. The no-numbers,
+no-measurement-vocabulary contract is unchanged, and the raw values stay in the appendix.
+
+**The scene is read from pixels, and said honestly.** Three bands of the frame (mean colour,
+texture, green/blue/bright shares) plus saturation and horizon candidates classify water, nature,
+outdoor, urban, sky, night or indoor. Water needs a bright warm top over a smooth dark band, or a
+blue bottom under a bright top; a textured dark bottom reads as a mountain, not a sea. When nothing
+clearly fits, the subject stays the neutral 장면 and the appendix says the reading rests on pixels
+only. Detector names that contradict an outdoor scene (waves called a bed) are dropped rather than
+printed.
+
+**Web app: real object detection in the tab.** `web/src/lib/vision.ts` runs the same
+EfficientDet-Lite0 COCO model as the Android app through LiteRT.js, decodes its raw heads against
+EfficientDet's anchor grid, and feeds the boxes into the same critique engine; the new subject row
+sits above the critique and the appendix shows "피사체 · 신뢰도 · 장면 · 피사체·배경 분리 · 객체 탐지
+시간". A first visit now downloads about 17.5 MB of models (two NIMA nets plus the 4.6 MB detector).
+
+**Tests.** Kotlin: 23 unit tests, including six new subject-scene tests (every category named in at
+least six sections, no digits or measurement words in any depth, scene reading, misfire guard,
+empty fallback). Web: `tsc` clean, `npm run build` clean, and the sentence contract replays 37,800
+generated sections with zero failures.
+
+## Carried over from build 66
+
+**Ten critique sections, written at length.** Each section is now built from a pool of
+measurement-driven sentences instead of one or two. Depth sets how many: Quick four, **Standard six
+(the app's default)**, Expert nine.
 
 **Ten critique sections, written at length.** Each section is now built from a pool of
 measurement-driven sentences instead of one or two. Depth sets how many: Quick four, **Standard six
@@ -53,13 +93,13 @@ Sobel edge density, mean RGB, channel spread, the 12-bin hue histogram, mean sat
 line candidates and a salience region. The browser has no NIMA or detector weights, so the aesthetic
 score and the "주요 영역" box are heuristics from those measurements; the UI labels them 추정 and the
 README/doc say so. `npm run build` runs `tsc --noEmit` plus the production build, and
-`node scripts/contract-check.cjs` replays 5,400 generated sections against the same contract.
+`node scripts/contract-check.cjs` replays 37,800 generated sections against the same contract.
 
 **Deployment.** Both `vercel.json` files are in the repository; importing `plenuen-cpu/FrameCritic`
 with the root directory set to `web` builds with no further configuration. See
 `docs/VERCEL_DEPLOYMENT.md`.
 
-**Version.** `versionCode` 24, `versionName` 2.2.0. The header reads `v2.2.0 (Build N)`, N being the
+**Version.** `versionCode` 25, `versionName` 2.3.0. The header reads `v2.3.0 (Build N)`, N being the
 CI run number and therefore this release tag.
 
 ## Carried over unchanged

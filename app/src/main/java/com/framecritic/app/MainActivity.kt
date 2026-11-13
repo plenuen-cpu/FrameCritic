@@ -232,6 +232,14 @@ class MainActivity:ComponentActivity(){
         }
         Text(score?.let{CriticEngine.verdict(analysis.assessment,it.adjusted)}?:"",fontSize=16.sp)
         Text("사진 한 장을 10점 만점으로 본 경험적 점수입니다.",fontSize=11.sp,color=Color.Gray)
+        analysis.scene?.let{scene->
+            val detected=scene.source=="MODEL"&&scene.count>0
+            Text(
+                if(detected) "식별된 피사체 · ${scene.subject}${if(scene.count>=2) " 여러 개" else ""} (신뢰도 ${roundSafe(scene.confidence*100.0)}%) · 장면 ${scene.sceneLabel}"
+                else "식별된 장면 · ${scene.sceneLabel} (픽셀 근거)",
+                fontSize=12.sp,color=Accent,modifier=Modifier.padding(top=4.dp)
+            )
+        }
     }
 }
 
@@ -276,6 +284,7 @@ class MainActivity:ComponentActivity(){
             Text(body,fontSize=12.sp,color=Color.Gray,lineHeight=19.sp)
         }
         Text("MediaPipe 탐지 ${analysis.subjects.size}개 · 분석 ${if(analysis.elapsedMs<1000) "${analysis.elapsedMs}ms" else "%.1f초".format(analysis.elapsedMs/1000.0)}",fontSize=12.sp,color=Color.Gray,modifier=Modifier.padding(top=12.dp))
+        analysis.scene?.let{scene->Text("피사체 근거: ${scene.evidence}",fontSize=12.sp,color=Color.Gray)}
         analysis.subjects.forEach{Text("${it.label} · 신뢰도 ${roundSafe(it.confidence*100.0)}% · 프레임 ${roundSafe(it.box.width()*it.box.height()*100.0)}%",fontSize=12.sp,color=Color.Gray)}
         analysis.warnings.forEach{Text(it,color=MaterialTheme.colorScheme.error,fontSize=12.sp)}
         Text("밝기 극단값은 의도된 표현일 수 있습니다. RGB 평균으로 조명색을 확정할 수 없고, 선명도 수치는 피사체·해상도에 따라 달라집니다.",fontSize=11.sp,color=Color.Gray,modifier=Modifier.padding(top=8.dp))

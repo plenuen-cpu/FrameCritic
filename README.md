@@ -36,9 +36,22 @@ sit in a fold-out block at the bottom.
   weighted mean (standard deviation is reported alongside). Measured with headless Chromium: ~85 ms
   for both models after a first load, and scores matched a Python LiteRT reference to within 0.11
   on the same photo (browser canvas resampling vs bicubic is the only difference). A first visit
-  downloads about 24 MB — 12.9 MB of models plus the 11 MB WASM runtime variant the browser picks —
-  and the browser caches both.
-- **Assets:** `web/scripts/prepare-assets.cjs` downloads the two models (SHA-256 verified against
+  downloads about 29 MB — 17.5 MB of models (two NIMA nets plus the detector) and the 11 MB WASM
+  runtime variant the browser picks — and the browser caches both.
+- **Subject detection in the browser:** the same EfficientDet-Lite0 (COCO) model the Android app
+  runs through MediaPipe is executed in the tab with LiteRT.js (`web/src/lib/vision.ts`). The
+  model's raw heads (19,206 anchors × 90 COCO ids, sigmoid already applied) are decoded against
+  EfficientDet's multi-scale anchor grid, deduplicated per class, and mapped back through the
+  letterbox to image coordinates. It recognises person, dog/cat/bird, car/bicycle/bus, and the
+  still-life objects that fit a frame, with a confidence score shown in the UI. See
+  `docs/WEB_VISION.md` for the anchor layout and the class-index convention.
+- **Scene reading:** three horizontal bands of the image give mean colour, luminance texture and
+  the share of blue/green/bright pixels; with the measured saturation and horizon candidates they
+  classify the scene as water, nature (mountain/forest/field), outdoor, urban, sky, night or indoor
+  (`web/src/lib/subject.ts`). The classifier only fires on combinations (e.g. a bright warm top
+  above a smooth dark band for water) and otherwise reports the neutral "장면" — it is a scene
+  estimate from pixels, and the appendix says so.
+- **Assets:** `web/scripts/prepare-assets.cjs` downloads the three models (SHA-256 verified against
   `app/src/main/assets/models/manifest.json`), pins their dynamic batch dimension to 1 (LiteRT.js
   compares input shapes against the model's `shape_signature`), and copies the LiteRT WASM runtime
   out of `node_modules`. It runs automatically through `predev`/`prebuild`, so `public/models` and
@@ -48,17 +61,23 @@ sit in a fold-out block at the bottom.
   (mean of 32px block standard deviations), Laplacian variance, Sobel edge density, mean RGB,
   channel spread, 12-bin hue histogram, mean saturation, near-horizontal line candidates
   (angle-projected accumulation) and a salience region from block contrast and edge density. The
-  "주요 영역" box is that salience estimate — there is no object detector in the browser, so it marks
-  where attention lands geometrically and names no object.
+  "주요 영역" box is the salience estimate used when the detector finds nothing; when it does find a
+  subject, the overlay and the critique name that subject instead.
 - **Engine:** `web/src/lib/critic-engine.ts` is a line-for-line port of the Kotlin engine. It was
   verified against 4,050 Kotlin outputs (5 measurement sets × 3 subject sets × 2 NIMA results ×
-  every persona · level · tone · depth combination); section text and scores matched exactly.
+  every persona · level · tone · depth combination); section text and scores matched exactly. The
+  subject voice (`web/src/lib/subject.ts`, mirrored in `app/.../Subject.kt`) adds the identified
+  subject to the opening paragraph and to the light, colour, composition, texture, mood, strength,
+  refinement, shooting and editing sections, with wording that fits a person, a pet, a car, water,
+  mountains, a city or a single object.
 - **Fallback:** if the models cannot be fetched, or the browser lacks WebAssembly, the analysis
   still runs on the canvas measurements, and both the UI and the copied report label the score
   "추정" (estimate) instead of "NIMA". The measurement appendix always states which path produced
   the score, plus the model inference time when the network ran.
 - **Check:** `npm run build` runs `tsc --noEmit` and the production build; `node scripts/contract-check.cjs`
-  replays 5,400 generated sections and fails on any digit or measurement word in the critique body.
+  replays 37,800 generated sections (four synthetic images × no subject and six identified subjects
+  × every persona · level · tone · depth) and fails on any digit, any measurement word, or a subject
+  that is not named in at least six of the ten sections.
 
 ```bash
 cd web

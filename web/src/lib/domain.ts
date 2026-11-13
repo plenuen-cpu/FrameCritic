@@ -148,6 +148,73 @@ export const PERSONA_BY_KEY: Record<PersonaKey, Persona> = PERSONAS.reduce(
   {} as Record<PersonaKey, Persona>,
 )
 
+/**
+ * 사진의 주인공이 무엇인지. 비평은 이 갈래에 맞는 어휘를 골라 쓴다.
+ * Kotlin의 Domain.kt SubjectCategory와 같은 값, 같은 순서다.
+ */
+export enum SubjectCategory {
+  GENERAL = 0,
+  PERSON = 1,
+  ANIMAL = 2,
+  VEHICLE = 3,
+  LANDSCAPE_NATURE = 4,
+  LANDSCAPE_WATER = 5,
+  URBAN_ARCHITECTURE = 6,
+  OBJECT_STILL = 7,
+}
+
+export const SUBJECT_TITLES: Record<number, string> = {
+  [SubjectCategory.GENERAL]: '장면',
+  [SubjectCategory.PERSON]: '인물',
+  [SubjectCategory.ANIMAL]: '동물',
+  [SubjectCategory.VEHICLE]: '탈것',
+  [SubjectCategory.LANDSCAPE_NATURE]: '자연 풍경',
+  [SubjectCategory.LANDSCAPE_WATER]: '물가 풍경',
+  [SubjectCategory.URBAN_ARCHITECTURE]: '도시·건축',
+  [SubjectCategory.OBJECT_STILL]: '사물',
+}
+
+/** 사진이 놓인 자리. 피사체 어휘와 빛·공간 문장의 결을 고르는 데 쓴다. */
+export enum SceneContext {
+  UNKNOWN = 0,
+  INDOOR = 1,
+  OUTDOOR = 2,
+  URBAN = 3,
+  NATURE = 4,
+  WATER = 5,
+  SKY = 6,
+  NIGHT = 7,
+}
+
+export const SCENE_TITLES: Record<number, string> = {
+  [SceneContext.UNKNOWN]: '장면',
+  [SceneContext.INDOOR]: '실내',
+  [SceneContext.OUTDOOR]: '야외',
+  [SceneContext.URBAN]: '도심',
+  [SceneContext.NATURE]: '자연',
+  [SceneContext.WATER]: '물가',
+  [SceneContext.SKY]: '하늘',
+  [SceneContext.NIGHT]: '밤',
+}
+
+/** 피사체·장면 식별 결과. 무엇을 근거로 그렇게 읽었는지도 함께 남긴다. */
+export interface SubjectScene {
+  category: SubjectCategory
+  /** 화면에 그대로 쓸 이름. 예: 반려견, 그릇, 바다, 도심 */
+  subject: string
+  /** 같은 갈래로 잡힌 피사체 수. 0이면 검출된 사물 없이 장면만 읽은 경우다. */
+  count: number
+  /** 피사체 신뢰도(0~1). 장면만 읽었으면 0이다. */
+  confidence: number
+  scene: SceneContext
+  sceneLabel: string
+  /** 피사체와 배경이 밝기·색으로 얼마나 나뉘는지(0~1). */
+  separation: number
+  source: 'MODEL' | 'SCENE'
+  /** 화면 아래 근거 블록에 그대로 쓰는 한 줄. */
+  evidence: string
+}
+
 export interface Evidence {
   score: number
   confidence: number

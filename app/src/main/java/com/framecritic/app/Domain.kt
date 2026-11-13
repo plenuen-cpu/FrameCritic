@@ -55,6 +55,46 @@ data class Evidence(val score: Double, val confidence: Double, val observation: 
         require(observation.isNotBlank() && interpretation.isNotBlank())
     }
 }
+
+/**
+ * 사진의 주인공이 무엇인지. 비평은 이 갈래에 맞는 어휘를 골라 쓴다.
+ * 웹의 domain.ts SubjectCategory와 같은 값, 같은 순서다.
+ */
+enum class SubjectCategory(val title: String) {
+    GENERAL("장면"),
+    PERSON("인물"),
+    ANIMAL("동물"),
+    VEHICLE("탈것"),
+    LANDSCAPE_NATURE("자연 풍경"),
+    LANDSCAPE_WATER("물가 풍경"),
+    URBAN_ARCHITECTURE("도시·건축"),
+    OBJECT_STILL("사물")
+}
+
+/** 사진이 놓인 자리. 피사체 어휘와 빛·공간 문장의 결을 고르는 데 쓴다. */
+enum class SceneContext(val title: String) {
+    UNKNOWN("장면"),
+    INDOOR("실내"),
+    OUTDOOR("야외"),
+    URBAN("도심"),
+    NATURE("자연"),
+    WATER("물가"),
+    SKY("하늘"),
+    NIGHT("밤")
+}
+
+/** 피사체·장면 식별 결과. 무엇을 근거로 그렇게 읽었는지도 함께 남긴다. */
+data class SubjectScene(
+    val category: SubjectCategory,
+    val subject: String,
+    val count: Int,
+    val confidence: Double,
+    val scene: SceneContext,
+    val sceneLabel: String,
+    val separation: Double,
+    val source: String,
+    val evidence: String
+)
 data class ScoreResult(val rawNima: Double, val weighted: Double, val base: Double, val adjusted: Double, val coverage: Double, val contributions: List<Double>)
 data class NimaResult(val aesthetic: Double, val technical: Double, val deviation: Double, val probabilities: List<Float>)
 object Scoring {

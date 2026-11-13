@@ -77,6 +77,8 @@ data class Assessment(
     val nima: NimaResult,
     val measure: Measure,
     val subjects: List<SubjectBox>,
+    /** 사진의 주인공과 장면. 읽지 못했으면 null이다. */
+    val scene: SubjectScene?,
     val evidence: List<Evidence>,
     val observations: Map<String, String>,
     val description: String
@@ -161,7 +163,7 @@ object CriticEngine {
     /** 한 항목의 계산이 실패해도 다른 항목의 근거는 남기고, 그 항목만 중립값으로 둔다. */
     private fun neutralAx() = Ax(.5, CONFIDENCE_FLOOR, "이 항목의 측정값을 읽지 못했습니다.", "이 부분은 이번 측정에서 판단할 근거를 얻지 못했습니다.")
 
-    fun assess(nima: NimaResult, measure: Measure, subjects: List<SubjectBox>): Assessment {
+    fun assess(nima: NimaResult, measure: Measure, subjects: List<SubjectBox>, scene: SubjectScene? = null): Assessment {
         val sorted = subjects
             .filter { it.confidence.isFinite() && it.cx.isFinite() && it.cy.isFinite() && it.w.isFinite() && it.h.isFinite() }
             .sortedByDescending { it.area }
@@ -188,19 +190,19 @@ object CriticEngine {
         }.toMap()
         val description = runCatching { describe(measure, sorted) }
             .getOrElse { "측정값 요약을 만들지 못했습니다. 아래 항목별 근거를 참고하십시오." }
-        return Assessment(nima, measure, sorted, evidence, observations, description)
+        return Assessment(nima, measure, sorted, scene, evidence, observations, description)
     }
 
     /** 어떤 입력이나 내부 오류에도 앱을 종료시키지 않고 Assessment를 돌려준다. */
-    fun safeAssess(nima: NimaResult, measure: Measure, subjects: List<SubjectBox>): Assessment =
-        runCatching { assess(nima, measure, subjects) }.getOrElse { neutralAssessment(nima, measure, subjects) }
+    fun safeAssess(nima: NimaResult, measure: Measure, subjects: List<SubjectBox>, scene: SubjectScene? = null): Assessment =
+        runCatching { assess(nima, measure, subjects, scene) }.getOrElse { neutralAssessment(nima, measure, subjects, scene) }
 
-    private fun neutralAssessment(nima: NimaResult, measure: Measure, subjects: List<SubjectBox>): Assessment {
+    private fun neutralAssessment(nima: NimaResult, measure: Measure, subjects: List<SubjectBox>, scene: SubjectScene? = null): Assessment {
         val evidence = Axis.entries.map { axis ->
             Evidence(.5, CONFIDENCE_FLOOR, "${axis.title} 항목의 측정값을 정리하지 못했습니다.", "이 부분은 이번 측정에서 판단할 근거를 얻지 못했습니다.")
         }
         val observations = Axis.entries.mapIndexed { i, axis -> axis.name to evidence[i].observation }.toMap()
-        return Assessment(nima, measure, subjects, evidence, observations, "측정값 요약을 만들지 못해 항목별 근거만 남겼습니다.")
+        return Assessment(nima, measure, subjects, scene, evidence, observations, "측정값 요약을 만들지 못해 항목별 근거만 남겼습니다.")
     }
 
     private data class Ax(val score: Double, val confidence: Double, val observation: String, val interpretation: String)
@@ -1144,8 +1146,10 @@ object CriticEngine {
         val seed = seedOf(m)
         val best = Axis.entries[top[0]]
         val weakest = Axis.entries[weak[0]]
+        val voice = SubjectReading.voice(a.scene, seed)
+        val opening = if (voice != null) "${voice.opening} ${openingFor(s10)}" else openingFor(s10)
         val first = mutableListOf(
-            openingFor(s10),
+            opening,
             frameBreath(m, seed),
             lightColorUnion(m, seed)
         )
@@ -1203,9 +1207,10 @@ object CriticEngine {
         val score = a.evidence[Axis.LIGHTING.ordinal].score
         val reading = lightReading(m, score)
         val advice = lightAdvice(m, tone, band(score) == 2)
-        val items = if (limit <= 4) listOf(lightTone(m, seed), lightRange(m, seed), reading, advice)
+        val subjectLight = SubjectReading.voice(a.scene, seed)?.light ?: lightTexture(m, seed)
+        val items = if (limit <= 4) listOf(lightTone(m, seed), subjectLight, reading, advice)
         else listOf(
-            lightTone(m, seed), lightRange(m, seed), lightTexture(m, seed), lightShadow(m, seed),
+            lightTone(m, seed), lightRange(m, seed), subjectLight, lightShadow(m, seed),
             reading, advice, lightModel(m, seed), lightQuality(m, seed), reflection(Axis.LIGHTING, a)
         )
         return join(items, limit)
@@ -1246,9 +1251,10 @@ object CriticEngine {
         val score = a.evidence[Axis.COLOR.ordinal].score
         val reading = colorReading(m, score)
         val advice = colorAdvice(m, tone, band(score) == 2)
-        val items = if (limit <= 4) listOf(colorTemperature(m, seed), colorPigment(m, seed), reading, advice)
+        val subjectColor = SubjectReading.voice(a.scene, seed)?.color ?: colorPigment(m, seed)
+        val items = if (limit <= 4) listOf(colorTemperature(m, seed), subjectColor, reading, advice)
         else listOf(
-            colorTemperature(m, seed), colorPigment(m, seed), colorAir(m, seed), colorUnion(m, seed),
+            colorTemperature(m, seed), subjectColor, colorAir(m, seed), colorUnion(m, seed),
             reading, advice, colorWeight(m, seed), colorPixel(m, seed), reflection(Axis.COLOR, a)
         )
         return join(items, limit)
@@ -1322,11 +1328,12 @@ object CriticEngine {
         val score = a.evidence[Axis.COMPOSITION.ordinal].score
         val reading = compReading(m, a.subjects, score)
         val advice = compAdvice(m, a.subjects, tone, band(score) == 2)
+        val subjectComposition = SubjectReading.voice(a.scene, seed)?.composition ?: compBalance(m, a.subjects, seed)
         val items = if (limit <= 4) listOf(
-            compPlacement(m, a.subjects, seed), compLines(m, seed), reading, advice
+            compPlacement(m, a.subjects, seed), subjectComposition, reading, advice
         ) else listOf(
             compPlacement(m, a.subjects, seed), compLines(m, seed), compSpace(m, a.subjects, seed),
-            compBalance(m, a.subjects, seed), reading, advice, compFlow(m, a.subjects, seed),
+            subjectComposition, reading, advice, compFlow(m, a.subjects, seed),
             compFraming(m, a.subjects, seed), reflection(Axis.COMPOSITION, a)
         )
         return join(items, limit)
@@ -1375,9 +1382,10 @@ object CriticEngine {
         val score = a.evidence[Axis.SHARPNESS.ordinal].score
         val reading = sharpReading(m, score)
         val advice = sharpAdvice(m, tone, band(score) == 2)
-        val items = if (limit <= 4) listOf(sharpFocus(m, seed), sharpTexture(m, seed), reading, advice)
+        val subjectTexture = SubjectReading.voice(a.scene, seed)?.texture ?: sharpTexture(m, seed)
+        val items = if (limit <= 4) listOf(sharpFocus(m, seed), subjectTexture, reading, advice)
         else listOf(
-            sharpFocus(m, seed), sharpTexture(m, seed), sharpSpace(m, a.subjects, seed), reading,
+            sharpFocus(m, seed), subjectTexture, sharpSpace(m, a.subjects, seed), reading,
             advice, sharpEdge(m, seed), sharpEven(m, seed), sharpIntent(m, seed), reflection(Axis.SHARPNESS, a)
         )
         return join(items, limit)
@@ -1418,11 +1426,12 @@ object CriticEngine {
         val human = a.subjects.any { it.label.lowercase() in HUMAN }
         val reading = moodReading(a)
         val advice = moodAdvice(tone, human, a.subjects.isEmpty())
+        val subjectMood = SubjectReading.voice(a.scene, seed)?.mood ?: moodAfter(m, seed)
         val items = if (limit <= 4) listOf(
-            moodTone(m, seed), moodPresence(m, a.subjects, seed), reading, advice
+            moodTone(m, seed), subjectMood, reading, advice
         ) else listOf(
-            moodTone(m, seed), moodPresence(m, a.subjects, seed), moodStillness(m, a.subjects, seed),
-            moodStory(m, a.subjects, seed), reading, advice, moodAfter(m, seed),
+            moodTone(m, seed), moodPresence(m, a.subjects, seed), subjectMood,
+            moodStillness(m, a.subjects, seed), moodStory(m, a.subjects, seed), reading, advice,
             moodBreath(m, a.subjects, seed), reflection(Axis.EMOTION, a)
         )
         return join(items, limit)
@@ -1461,11 +1470,10 @@ object CriticEngine {
         val second = Axis.entries[top[1]]
         val best = a.evidence[top[0]].score
         val secondScore = a.evidence[top[1]].score
-        val items = mutableListOf(
-            strengthFrame(top, a),
-            praise(first, a, seed),
-            praise(second, a, seed)
-        )
+        val items = mutableListOf(strengthFrame(top, a))
+        SubjectReading.voice(a.scene, seed)?.let { items += it.praise }
+        items += praise(first, a, seed)
+        items += praise(second, a, seed)
         if (best >= .72 && secondScore >= .60) items += "두 지점이 같은 방향을 가리키고 있어, 사진의 인상이 한 번에 정리됩니다. 강점이 여럿 흩어진 사진보다, 둘이 겹친 사진이 기억에 오래 남습니다."
         items += "기억에 남는 사진은 대개 한 가지 인상이 분명합니다. 이 장에서는 그 인상이 ${first.title} 쪽에서 옵니다."
         items += "지금의 강점을 유지한 채 다른 요소를 손보면, 사진의 인상이 흔들리지 않고 조금씩 단단해집니다."
@@ -1487,6 +1495,7 @@ object CriticEngine {
             refine(first, a, seed),
             refine(second, a, seed)
         )
+        SubjectReading.voice(a.scene, seed)?.let { items.add(1, it.refine) }
         items += "둘 중 하나만 고르라면 ${first.title} 쪽을 먼저 손보시는 편이 좋습니다. 사진의 인상이 가장 크게 흔들리는 곳이 그쪽입니다."
         items += "이 지점들은 사진을 다시 찍지 않아도 일부는 보정으로 정리할 수 있습니다. 다만 원본에 남아 있지 않은 정보를 만들어 낼 수는 없습니다."
         items += when (tone) {
@@ -1541,6 +1550,7 @@ object CriticEngine {
     private fun shooting(a: Assessment, tone: Tone, depth: Depth, weak: List<Int>): String {
         val first = Axis.entries[weak[0]]
         val second = Axis.entries[weak[1]]
+        val voice = SubjectReading.voice(a.scene, seedOf(a.measure))
         val items = mutableListOf(
             when (tone) {
                 Tone.MENTOR -> "다음 장에서는 이렇게 잡아 보시면 좋겠습니다."
@@ -1553,6 +1563,7 @@ object CriticEngine {
             shotDistance(a, tone),
             shotExposure(a, tone)
         )
+        voice?.let { items.add(3, it.shoot) }
         items += "같은 장면에서 이 세 가지만 바꿔 몇 장을 겹쳐 찍으면, 어떤 선택이 이 사진에 맞는지 스스로 확인할 수 있습니다."
         items += "촬영은 한 번에 완성되지 않습니다. 지금의 구도를 기준점으로 두고, 한 요소씩만 바꿔 비교하는 편이 배우는 속도가 빠릅니다."
         items += "장면을 떠나기 전에 화면을 한 번 더 확인하십시오. 프레임 가장자리와 초점이 놓인 자리만 보아도 절반은 정리됩니다."
@@ -1564,6 +1575,7 @@ object CriticEngine {
         val m = a.measure
         val first = Axis.entries[weak[0]]
         val second = Axis.entries[weak[1]]
+        val voice = SubjectReading.voice(a.scene, seedOf(m))
         val items = mutableListOf(
             when (tone) {
                 Tone.MENTOR -> "보정은 원본이 담고 있는 정보 안에서 마무리하시면 좋겠습니다."
@@ -1573,6 +1585,7 @@ object CriticEngine {
             editAdvice(first, a, tone),
             editAdvice(second, a, tone)
         )
+        voice?.let { items.add(3, it.edit) }
         if (m.highlights > .02) items += "밝은 쪽은 하이라이트 슬라이더를 낮추고, 톤 커브의 어깨를 부드럽게 만들어 흰색으로 눌린 결을 되살리는 편이 좋겠습니다."
         if (m.shadows > .03) items += "어두운 쪽은 섀도우를 살짝 들어 올리되, 검정 지점은 남겨 두어야 그림자가 뜨지 않습니다."
         if (m.contrast < 20.0) items += "검정 지점을 조금 내리고 중간 톤을 살짝 눌러 계조의 폭을 넓히면, 사진이 한 단계 깊어집니다."

@@ -14,6 +14,7 @@
  */
 
 import { distribution, type NimaResult, type NimaSource } from './domain'
+import { assetUrl, loadRuntime } from './runtime'
 
 const INPUT_SIZE = 224
 const SPAN = INPUT_SIZE * INPUT_SIZE * 3
@@ -47,19 +48,19 @@ let enginePromise: Promise<Engine | null> | null = null
 let status: NimaStatus = 'idle'
 
 /** 페이지 주소를 기준으로 정적 자산 주소를 만든다(하위 경로 배포에도 맞는다). */
-function assetUrl(path: string): string {
-  return new URL(path, document.baseURI).href
+function modelUrl(file: string): string {
+  return assetUrl(`models/${file}`)
 }
 
 async function loadModelBytes(file: string): Promise<Uint8Array> {
-  const response = await fetch(assetUrl(`models/${file}`))
+  const response = await fetch(modelUrl(file))
   if (!response.ok) throw new Error(`모델을 내려받지 못했습니다: ${file} (${response.status})`)
   return new Uint8Array(await response.arrayBuffer())
 }
 
-async function startEngine(): Promise<Engine> {
-  const core = await import('@litertjs/core')
-  await core.loadLiteRt(assetUrl('litert/'))
+async function startEngine(): Promise<Engine | null> {
+  const core = await loadRuntime()
+  if (!core) return null
   const [aestheticBytes, technicalBytes] = await Promise.all([
     loadModelBytes(MODEL_FILES.aesthetic),
     loadModelBytes(MODEL_FILES.technical).catch(() => null),

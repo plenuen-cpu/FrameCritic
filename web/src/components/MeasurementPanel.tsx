@@ -6,12 +6,15 @@ import {
   type Assessment,
 } from '../lib/critic-engine'
 import type { NimaSource, ScoreResult } from '../lib/domain'
+import { subjectWithCount } from '../lib/subject'
 
 interface MeasurementPanelProps {
   assessment: Assessment
   score: ScoreResult | null
   nimaSource: NimaSource
   nimaMs: number
+  visionSource: 'MODEL' | 'SCENE'
+  visionMs: number
   elapsedMs: number
   size: { width: number; height: number }
 }
@@ -25,6 +28,8 @@ export default function MeasurementPanel({
   score,
   nimaSource,
   nimaMs,
+  visionSource,
+  visionMs,
   elapsedMs,
   size,
 }: MeasurementPanelProps) {
@@ -33,6 +38,7 @@ export default function MeasurementPanel({
   const evidence = evidenceLines(assessment)
   const nima = assessment.nima
   const modelScores = nimaSource === 'MODEL'
+  const scene = assessment.scene
 
   return (
     <section className="border-t border-hairline pt-2">
@@ -48,6 +54,31 @@ export default function MeasurementPanel({
 
       {open ? (
         <div className="space-y-6 pb-4 pt-2">
+          {scene ? (
+            <div>
+              <h4 className="mb-2 text-xs tracking-widest text-sage">식별된 피사체와 장면</h4>
+              <div className="divide-y divide-hairline/70">
+                {[
+                  ['피사체', subjectWithCount(scene)],
+                  [
+                    '피사체 신뢰도',
+                    scene.source === 'MODEL' && scene.count > 0
+                      ? `${Math.round(scene.confidence * 100)}%`
+                      : '장면 근거로만 판단',
+                  ],
+                  ['장면', scene.sceneLabel],
+                  ['피사체·배경 분리', `${Math.round(scene.separation * 100)}%`],
+                  ['객체 탐지', visionSource === 'MODEL' ? `EfficientDet-Lite0 · ${visionMs}ms` : '미적용 (휴리스틱)'],
+                  ['근거', scene.evidence],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-baseline justify-between gap-4 py-1.5">
+                    <span className="shrink-0 text-xs text-muted">{label}</span>
+                    <span className="text-right text-xs tabular-nums text-ink">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {groups.map((group) => (
             <div key={group.title}>
               <h4 className="mb-2 text-xs tracking-widest text-sage">{group.title}</h4>
