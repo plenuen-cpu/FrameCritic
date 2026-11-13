@@ -210,7 +210,8 @@ object CriticEngine {
     // ---------- measurements (numbers only live here) ----------
     private fun composition(m: Measure, subjects: List<SubjectBox>): Ax {
         val main = subjects.firstOrNull()
-        val crowded = subjects.count { it.touchesEdge && it.area > .05 }
+        // 가장 큰 피사체가 화면을 크게 채우면 가장자리에 닿는 것이 자연스럽다. 그 상자는 조임으로 세지 않는다.
+        val crowded = subjects.count { it.touchesEdge && it.area > .05 && !(it === main && it.area >= .3) }
         val tiltScore = if (m.lines.isEmpty()) 0.0 else 1.0 - ramp(m.maxTilt, 1.0, 9.0)
         val placement = if (main == null) 0.5 else 1.0 - ramp(nearestThirds(main.cx, main.cy), .02, .32)
         val room = 1.0 - ramp(crowded.toDouble(), 0.0, 2.0)
@@ -597,7 +598,7 @@ object CriticEngine {
     /** 여백과 프레임의 조임. 긴장과 이완. */
     private fun compSpace(m: Measure, subjects: List<SubjectBox>, seed: Int): String {
         val main = subjects.firstOrNull()
-        val crowded = subjects.count { it.touchesEdge && it.area > .05 }
+        val crowded = subjects.count { it.touchesEdge && it.area > .05 && !(it === main && it.area >= .3) }
         return when {
             crowded >= 2 -> say(seed, 121,
                 "여러 요소가 화면 가장자리에 닿아 있습니다. 프레임이 조여들어 화면이 답답하게 느껴지고, 시선이 밖으로 나갈 자리를 찾지 못합니다.",

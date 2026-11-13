@@ -437,7 +437,13 @@ export function safeAssess(
 // ---------- measurements (numbers only live here) ----------
 function composition(m: Measure, subjects: SubjectBox[]): Ax {
   const main = subjects[0]
-  const crowded = subjects.filter((s) => s.touchesEdge && s.area > 0.05).length
+  /**
+   * 가장 큰 피사체가 화면을 크게 채우면 가장자리에 닿는 것이 자연스럽다.
+   * 그 상자는 '프레임을 조이는 요소'로 세지 않는다.
+   */
+  const crowded = subjects.filter(
+    (s) => s.touchesEdge && s.area > 0.05 && !(s === main && s.area >= 0.3),
+  ).length
   const tiltScore = m.lines.length === 0 ? 0 : 1 - ramp(m.maxTilt, 1, 9)
   const placement = main ? 1 - ramp(nearestThirds(main.cx, main.cy), 0.02, 0.32) : 0.5
   const room = 1 - ramp(crowded, 0, 2)
@@ -1054,7 +1060,9 @@ function compLines(m: Measure, seed: number): string {
 
 function compSpace(_m: Measure, subjects: SubjectBox[], seed: number): string {
   const main = subjects[0]
-  const crowded = subjects.filter((s) => s.touchesEdge && s.area > 0.05).length
+  const crowded = subjects.filter(
+    (s) => s.touchesEdge && s.area > 0.05 && !(s === main && s.area >= 0.3),
+  ).length
   if (crowded >= 2)
     return say(
       seed,

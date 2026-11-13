@@ -352,8 +352,8 @@ export default function App() {
 
         <footer className="space-y-2 border-t border-hairline pt-6 text-[11px] leading-relaxed text-muted">
           <p>
-            FrameCritic은 사진 한 장의 측정값과 결정론적 문장 규칙으로 비평을 씁니다. 언어 모델을 쓰지 않으며, 측정되지 않은
-            피사체·의도·감정을 사실처럼 말하지 않습니다.
+            FrameCritic은 사진 한 장의 측정값, 브라우저에서 직접 돌린 객체 탐지 결과, 결정론적 문장 규칙으로 비평을 씁니다.
+            언어 모델을 쓰지 않으며, 화면에서 확인한 피사체와 수치만 말하고 보이지 않는 의도·감정은 사실처럼 말하지 않습니다.
           </p>
           <p>
             미적·기술 점수는 idealo의 NIMA(Neural Image Assessment) MobileNet 모델을 이 브라우저에서 직접 돌려 계산합니다. 모델은 처음
