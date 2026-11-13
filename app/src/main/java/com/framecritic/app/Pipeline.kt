@@ -7,6 +7,7 @@ import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.util.Locale
 import kotlin.math.hypot
+import kotlin.math.sqrt
 
 data class Analysis(val nima:NimaResult,val metrics:Metrics,val subjects:List<Subject>,val assessment:Assessment,val warnings:List<String>,val elapsedMs:Long,val scene:SubjectScene?=null)
 data class Report(val persona:Persona,val level:Level,val tone:Tone,val depth:Depth,val score:ScoreResult?,val sections:Map<String,String>,val failure:String?) {
@@ -135,7 +136,7 @@ object Pipeline {
         }
         // 주인공과 장면을 읽는다. 탐지 결과(이름·신뢰도)와 픽셀 띠 근거만 쓴다.
         val cues=runCatching{Vision.cues(bitmap)}.getOrNull()
-        val primary=boxes.maxByOrNull{it.confidence*sqrt(it.w*it.h)}
+        val primary=boxes.maxByOrNull{box:SubjectBox->box.confidence*sqrt(box.w*box.h)}
         val separation=if(primary!=null&&cues!=null) runCatching{Vision.separation(bitmap,primary)}.getOrDefault(0.0) else 0.0
         val scene=SubjectReading.read(boxes,cues,measure.saturation,measure.luminance,measure.lines.size,separation,"MODEL")
         // 장면 자체가 주인공인 풍경에서는 엉뚱한 사물 이름이 본문에 끼어들지 않게 상자를 비운다.

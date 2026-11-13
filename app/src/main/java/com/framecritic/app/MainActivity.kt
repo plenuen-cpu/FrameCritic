@@ -235,7 +235,7 @@ class MainActivity:ComponentActivity(){
         analysis.scene?.let{scene->
             val detected=scene.source=="MODEL"&&scene.count>0
             Text(
-                if(detected) "식별된 피사체 · ${scene.subject}${if(scene.count>=2) " 여러 개" else ""} (신뢰도 ${roundSafe(scene.confidence*100.0)}%) · 장면 ${scene.sceneLabel}"
+                if(detected) "식별된 피사체 · ${SubjectReading.subjectWithCount(scene)} (신뢰도 ${roundSafe(scene.confidence*100.0)}%) · 장면 ${scene.sceneLabel}"
                 else "식별된 장면 · ${scene.sceneLabel} (픽셀 근거)",
                 fontSize=12.sp,color=Accent,modifier=Modifier.padding(top=4.dp)
             )

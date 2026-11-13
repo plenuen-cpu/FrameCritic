@@ -461,6 +461,16 @@ object SubjectReading {
         else -> null
     }
 
+    /** 피사체 이름과 수를 화면에 쓸 말로 정리한다. 예: '반려견 여러 마리', '인물', '그릇' */
+    fun subjectWithCount(scene: SubjectScene): String {
+        if (scene.count < 2) return scene.subject
+        return when (scene.category) {
+            SubjectCategory.ANIMAL -> "${scene.subject} 여러 마리"
+            SubjectCategory.PERSON -> "인물 여러 명"
+            else -> "${scene.subject} 여러 개"
+        }
+    }
+
     /** 화면 아래 줄에 쓸 짧은 이름. 예: '반려견 · 바다' */
     fun subjectLine(scene: SubjectScene): String {
         val sceneName = scene.sceneLabel.ifBlank { scene.scene.title }
